@@ -1,0 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-bg-app text-text-primary font-sans antialiased m-0 p-0 overflow-x-hidden;
+    background-color: #050507;
+    color: #FFFFFF;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    font-feature-settings: 'cv05' on, 'cv08' on, 'cv11' on;
+  }
+
+  /* Scientific numerical figures tabular alignment */
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}

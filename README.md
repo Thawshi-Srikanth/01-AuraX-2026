@@ -21,7 +21,11 @@ This repository is being built progressively, starting with the backend.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The image viewer and frontend have not been migrated yet.
+The frontend has been restored by copying the existing application's UI files,
+styles, view components, local assets, dependency manifest, and lockfile.
+The copied frontend connects to the new resolver, observations, calibrated images,
+measured spectral samples, catalog projection, and background comparison jobs.
+Archive availability and scientific compatibility still determine which data can be shown.
 
 ## Run the backend
 
@@ -36,6 +40,62 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 Open <http://127.0.0.1:8000/health> for the health response and
 <http://127.0.0.1:8000/docs> for the API documentation.
 The health response confirms that the API is running; it does not check external archives.
+
+## Run the frontend
+
+Frontend work is on `codex/frontend-development`. The existing Home page, navbar,
+search modal, layouts, styles, view components, reference assets, and guide files
+are copied from the original app. The original design is preserved; future work
+should adapt backend connections without recreating screens.
+
+Start the backend, then in another terminal:
+
+```sh
+cd frontend
+bun install --frozen-lockfile
+bun run dev
+```
+
+Open <http://127.0.0.1:5173>. The original dependency versions are recorded in the
+copied Bun lockfile. The Vite development proxy sends `/backend` requests to
+`http://127.0.0.1:8000`. `frontend/.env.example` documents alternate backend URLs;
+restart Vite after changing configuration. Production static hosting needs the
+same proxy or an explicit public `VITE_API_BASE_URL`, matching backend CORS origins,
+and an `index.html` fallback for application routes.
+
+The original resolver signatures are adapted to the tested name/coordinate
+client. Unknown coordinate epochs remain unspecified. The default target is an
+example starting position, without hard-coded proper motion or catalog verification.
+The existing map's reference overlays are not queried exposure coverage; its
+coordinate launch uses the backend rather than inventing fallback metadata.
+
+Image requests use `size_deg`; controls show angular fields of view and returned
+image dimensions remain authoritative. Unknown metadata wavelengths remain unknown.
+Images retain physical brightness, quality masks, and full SIP coordinates from
+Astropy. `/api/catalog/project` maps reference positions through that exact header;
+a projected marker is not a verified image detection or a motion-corrected position.
+
+Wavelengths shows only measured nearest-pixel samples and their variance errors.
+Samples may span dates; no continuous spectrum, identified features, or missing
+channels are inferred. Comparison searches poll resumable background jobs and
+cancel outstanding jobs when leaving the search. Candidate groups require every
+pair to be verified; only a ready registered sequence can blink. Difference images
+and motion measurements remain unavailable. Fresh saved collections start empty;
+existing browser-saved targets are preserved.
+
+Verify from `frontend/`:
+
+```sh
+bun run lint
+bun test
+bun run build
+```
+
+Original frontend tests are copied along with the view utilities. The tested
+resolver client is retained in `src/services/resolverClient.ts`. The frontend
+workflow runs locked installation, lint, tests, and build on relevant pushes.
+Generated builds, dependencies, credentials, and local configuration are not
+committed. Copied manual articles are user documentation, not migration backlogs.
 
 ## Configuration
 
@@ -653,7 +713,7 @@ locally on Python 3.12 and in GitHub checks on Python 3.11 and 3.12. The existin
 also pass. A live one-day D3 date-search query still timed out after the configured
 45-second metadata read timeout and returned HTTP 503. The full live date-search
 workflow remains unverified; a timeout is not evidence of missing sky coverage.
-The frontend has not yet been migrated, and scientific subtraction and motion
+The frontend UI is copied and adapted; scientific subtraction and motion
 measurement are not provided by this backend.
 
 

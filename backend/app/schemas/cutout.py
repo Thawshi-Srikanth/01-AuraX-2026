@@ -28,6 +28,7 @@ class CutoutResponse(BaseModel):
     target_y: float
     wavelength_um: float
     channel_width_um: float
+    wcs: dict = {}
     spatial_wcs_header: str
     pixel_origin: int = 0
     array_order: str = "row-major: index = y * width + x; y follows FITS array order"

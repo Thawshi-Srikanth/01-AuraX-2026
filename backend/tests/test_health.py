@@ -24,6 +24,7 @@ def test_health_and_api_contract(monkeypatch):
             "/api/cutout",
             "/api/spectrum",
             "/api/catalog/sources",
+            "/api/catalog/project",
             "/api/compare",
             "/api/compare/matches",
             "/api/compare/matches/jobs",
