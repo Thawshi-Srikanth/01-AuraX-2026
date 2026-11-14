@@ -114,6 +114,7 @@ def test_app_initializes_cache_only_on_startup(monkeypatch, tmp_path):
             "/api/catalog/sources",
             "/api/compare",
             "/api/compare/matches",
+            "/api/compare/sequence",
         }
     with TestClient(create_app()) as client:
         assert client.app.state.cache.get("key") == {"value": 1}

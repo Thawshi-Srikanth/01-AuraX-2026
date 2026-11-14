@@ -14,11 +14,12 @@ This repository is being built progressively, starting with the backend.
 - Real SIMBAD catalog cone search with source references and angular distances.
 - Full-SIP, wavelength-screened visual comparison of two observations.
 - Bounded compatible-date discovery with saved progress and explicit retrieval batches.
+- Two-to-four-observation sequence preparation with every-pair wavelength screening.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The image viewer, multi-date sequences, and frontend have not been migrated yet.
+The image viewer and frontend have not been migrated yet.
 
 ## Run the backend
 
@@ -288,8 +289,52 @@ requests return HTTP 400/422; unusable data return 502 and retrieval failures 50
 
 This is **visual comparison only**. No PSF matching, background subtraction,
 difference image, propagated reprojection uncertainty, motion measurement,
-proper-motion estimate, or discovery claim is produced. Compatible-date discovery is described below. Multi-date preparation remains a
-separate migration chunk.
+proper-motion estimate, or discovery claim is produced. Compatible-date discovery and multi-date preparation are described below.
+
+## Prepare a multi-date sequence
+
+Use `POST /api/compare/sequence` in <http://127.0.0.1:8000/docs>.
+Supply `access_urls` containing **two to four distinct real product URLs**,
+`ra`, `dec`, optional `size_deg` (default 0.03, maximum 0.25), and `stretch`
+(`zscale`, `linear`, or `log`). Every selected product must use the same detector.
+Reprocessed versions of one exposure and duplicate actual observation times are
+rejected. Different timestamps on the same calendar day are allowed.
+
+The first selected observation defines the reference grid. Frames retain request
+order, even when that order is not chronological. Each later observation is
+reprojected directly to the first grid using the full celestial SIP WCS, bilinear
+interpolation, and round-trip coordinate checks. They are not successively
+reprojected through intermediate frames. The same angular padding and image-axis
+bounds as the two-observation API apply. There are at most four explicit FITS
+retrievals, each using the existing complete-file cache and transfer limits.
+
+All frames share one quality/coverage mask. Every epoch pair must pass the
+wavelength rule at the target. At each retained reference pixel, every
+cross-combination of the two frames' interpolation contributors must pass too.
+Two frames that independently match the reference are not assumed to match each
+other. `pair_checks` reports all 1, 3, or 6 epoch pairs for 2, 3, or 4 inputs.
+Per-pair pixel counts use common quality coverage before intersection with
+other-pair masks, so the final matched count can be lower. These checks still
+use the approximate WCS-WAVE visualization lookup and the
+same 0.002 um pair margin; they are not precision science calibration.
+
+Ready responses contain exactly the requested number of frames. Each frame has
+an `epoch_index` into the returned `epochs` list. Pixel arrays use the first
+image's row-major grid, zero-based coordinates, full WCS header, and one common
+`valid_mask`, with nulls for excluded pixels in every frame. One contrast range
+is computed from all retained pixels across all selected images, preserving
+relative brightness. No missing dates or pixels are synthesized.
+
+The target and at least 16 common pixels must pass all pair checks before frames
+are emitted. Blocked responses include epoch metadata and diagnostics but an
+empty `frames` list. Their status identifies duplicate times, incompatible
+wavelengths, missing common quality coverage, or insufficient matched coverage.
+Invalid input is HTTP 400/422; unusable identity/calibration is 502 and retrieval
+failure is 503. A failed image is not silently dropped to make a shorter sequence.
+
+This endpoint prepares a **visual sequence**. It does not play an animation,
+match PSFs, subtract backgrounds, generate difference images, propagate
+reprojection uncertainties, measure motion, or claim a discovery.
 
 ## Find compatible dates
 

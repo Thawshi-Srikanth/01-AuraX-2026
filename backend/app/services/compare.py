@@ -22,19 +22,28 @@ MAX_REFERENCE_AXIS = 256
 MAX_INPUT_AXIS = 512
 
 
-def validate_pair(request: CompareRequest):
+def validate_observations(urls, ra, dec, size_deg):
+    if not 2 <= len(urls) <= 4:
+        raise ValueError("Choose two to four observations")
     identities = []
-    for url in (request.access_url_a, request.access_url_b):
-        cutout_url(url, request.ra, request.dec, request.size_deg)
+    for url in urls:
+        cutout_url(url, ra, dec, size_deg)
         match = PRODUCT_NAME.fullmatch(urlsplit(url).path.rsplit("/", 1)[-1])
         identities.append((match[1], "D" + match[2], match[3]))
-    if identities[0][:2] == identities[1][:2]:
-        raise ValueError(
-            "Choose different exposures, not reprocessed versions of one exposure"
-        )
-    if identities[0][1] != identities[1][1]:
+    if len({identity[:2] for identity in identities}) != len(identities):
+        raise ValueError("Choose different exposures, not reprocessed versions")
+    if len({identity[1] for identity in identities}) != 1:
         raise ValueError("Choose observations from the same detector")
     return identities
+
+
+def validate_pair(request: CompareRequest):
+    return validate_observations(
+        [request.access_url_a, request.access_url_b],
+        request.ra,
+        request.dec,
+        request.size_deg,
+    )
 
 
 def matching_wavelengths(wave_a, wave_b, band_a, band_b):
@@ -84,7 +93,7 @@ def read_epoch(data, retrieved, url, expected, ra, dec):
         raise InvalidFitsError("Invalid observation identity or timestamp") from error
 
 
-def _planes(data):
+def calibrated_planes(data):
     yy, xx = np.indices(data.image.shape, dtype=float)
     wave, band = data.wavelength_wcs.pixel_to_world(xx, yy)
     wave, band = np.asarray(wave.to_value(u.um)), np.asarray(band.to_value(u.um))
@@ -95,16 +104,22 @@ def _planes(data):
     return np.asarray(image, dtype=float), wave, band, valid
 
 
-def _common_masks(
-    a, b, wave_a, band_a, valid_a, wave_b, band_b, valid_b, projected, footprint
-):
-    yy, xx = np.indices(a.image.shape, dtype=float)
-    sky = a.spatial_wcs.pixel_to_world(xx, yy)
+def sample_neighbourhood(reference, other, wave, band, valid, projected, footprint):
+    """Retain every bilinear contributor's wavelength, bandwidth, and quality."""
+    shape = reference.image.shape
+    height, width = other.image.shape
+    if min(height, width) < 2:
+        return (
+            np.zeros(shape, dtype=bool),
+            np.full((4, *shape), np.nan),
+            np.full((4, *shape), np.nan),
+        )
+    yy, xx = np.indices(shape, dtype=float)
+    sky = reference.spatial_wcs.pixel_to_world(xx, yy)
     try:
-        bx, by = b.spatial_wcs.world_to_pixel(sky)
+        bx, by = other.spatial_wcs.world_to_pixel(sky)
     except NoConvergence as error:
         raise InvalidFitsError("Common-grid coordinates did not converge") from error
-    height, width = b.image.shape
     inside = (
         np.isfinite(bx)
         & np.isfinite(by)
@@ -115,18 +130,30 @@ def _common_masks(
     )
     ix = np.floor(np.where(inside, bx, 0)).astype(int)
     iy = np.floor(np.where(inside, by, 0)).astype(int)
-    coverage = valid_a & inside & np.isfinite(projected) & (footprint > 0)
-    spectral = np.ones(a.image.shape, dtype=bool)
+    coverage = inside & np.isfinite(projected) & (footprint > 0)
+    waves, bands = [], []
     for dx, dy in [(0, 0), (1, 0), (0, 1), (1, 1)]:
-        coverage &= valid_b[iy + dy, ix + dx]
-        spectral &= matching_wavelengths(
-            wave_a, wave_b[iy + dy, ix + dx], band_a, band_b[iy + dy, ix + dx]
-        )
+        coverage &= valid[iy + dy, ix + dx]
+        waves.append(wave[iy + dy, ix + dx])
+        bands.append(band[iy + dy, ix + dx])
+    return coverage, np.stack(waves), np.stack(bands)
+
+
+def _common_masks(
+    a, b, wave_a, band_a, valid_a, wave_b, band_b, valid_b, projected, footprint
+):
+    coverage, waves, bands = sample_neighbourhood(
+        a, b, wave_b, band_b, valid_b, projected, footprint
+    )
+    coverage &= valid_a
+    spectral = np.ones(a.image.shape, dtype=bool)
+    for wave, band in zip(waves, bands):
+        spectral &= matching_wavelengths(wave_a, wave, band_a, band)
     return coverage, coverage & spectral
 
 
-def _display_pair(a, b, mask, stretch):
-    values = np.concatenate([a[mask], b[mask]])
+def shared_display(images, mask, stretch):
+    values = np.concatenate([image[mask] for image in images])
     if stretch == "zscale":
         low, high = (float(value) for value in ZScaleInterval().get_limits(values))
     else:
@@ -149,7 +176,12 @@ def _display_pair(a, b, mask, stretch):
             float(value) if np.isfinite(value) else None for value in result.ravel()
         ]
 
-    return display(a), display(b), low, high
+    return [display(image) for image in images], low, high
+
+
+def _display_pair(a, b, mask, stretch):
+    pixels, low, high = shared_display([a, b], mask, stretch)
+    return pixels[0], pixels[1], low, high
 
 
 def prepare_comparison(request: CompareRequest, store: FitsStore) -> CompareResponse:
@@ -175,8 +207,8 @@ def prepare_comparison(request: CompareRequest, store: FitsStore) -> CompareResp
         epoch_b = read_epoch(
             b, retrieved_b, request.access_url_b, identities[1], request.ra, request.dec
         )
-        image_a, wave_a, band_a, valid_a = _planes(a)
-        image_b, wave_b, band_b, valid_b = _planes(b)
+        image_a, wave_a, band_a, valid_a = calibrated_planes(a)
+        image_b, wave_b, band_b, valid_b = calibrated_planes(b)
         try:
             projected, footprint = reproject_interp(
                 (np.where(valid_b, image_b, np.nan), b.spatial_wcs),

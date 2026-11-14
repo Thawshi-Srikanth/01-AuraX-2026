@@ -293,3 +293,22 @@ def test_shared_display_limits_preserve_relative_brightness(client, pair):
     assert data["display_max_mjy_sr"] == pytest.approx(10)
     assert max(value for value in data["pixels_a"] if value is not None) < 1e-12
     assert min(value for value in data["pixels_b"] if value is not None) > 1 - 1e-12
+
+
+def test_too_small_interpolation_neighbourhood_produces_no_coverage():
+    from types import SimpleNamespace
+
+    reference = SimpleNamespace(image=np.ones((2, 2)))
+    other = SimpleNamespace(image=np.ones((1, 1)))
+    coverage, wave, band = service.sample_neighbourhood(
+        reference,
+        other,
+        np.ones((1, 1)),
+        np.ones((1, 1)),
+        np.ones((1, 1), dtype=bool),
+        np.ones((2, 2)),
+        np.ones((2, 2)),
+    )
+    assert not coverage.any()
+    assert wave.shape == band.shape == (4, 2, 2)
+    assert np.isnan(wave).all() and np.isnan(band).all()
