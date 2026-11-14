@@ -18,6 +18,12 @@ A sky-map background helps you navigate. It is not the selected SPHEREx exposure
 4. **Inspect the image.** Use Fit to see its full extent, then zoom and pan. Try another display stretch to reveal faint structure.
 5. **Read a pixel.** The brightness readout describes the calibrated measurement, while the display stretch controls its appearance.
 
+Checkerboard patches mark excluded or nonfinite pixels; valid dark pixels remain
+dark. They are different from missing data. In the Region inspector, click a nearby
+catalog name to center its exact reference position. A record outside the current
+image is reported as outside; it does not select another source. Shared catalog
+positions remain unresolved associations.
+
 If an archive request fails, retry when the service is available. An empty coverage result and a connection failure mean different things; neither establishes that the object emits no light.
 
 ## Know what each view does

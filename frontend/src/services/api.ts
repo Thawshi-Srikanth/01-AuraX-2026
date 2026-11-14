@@ -552,3 +552,14 @@ export async function fetchRegionCatalog(ra: number, dec: number, signal: AbortS
   const params = new URLSearchParams({ ra: String(normalizeRa(ra)), dec: String(dec), radius_arcmin: '1', limit: '20' });
   return readResponse(await fetch(`${API_BASE_URL}/api/catalog/sources?${params}`, { signal }), 'Catalog context unavailable');
 }
+
+
+export async function projectCatalogPosition(wcs: WcsMetadata, source: Pick<RegionCatalogRecord, 'ra_deg' | 'dec_deg'>, signal: AbortSignal): Promise<number[] | null> {
+  if (!wcs.spatial_wcs_header) throw new Error('This image has no full WCS for source selection.');
+  const data = await readResponse(await fetch(`${API_BASE_URL}/api/catalog/project`, {
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spatial_wcs_header: wcs.spatial_wcs_header, positions: [{ ra: source.ra_deg, dec: source.dec_deg }] }),
+  }), 'Source projection unavailable');
+  if (!Array.isArray(data.pixels) || data.pixels.length !== 1) throw new Error('Invalid source projection.');
+  return data.pixels[0];
+}

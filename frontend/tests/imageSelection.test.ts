@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
-import { canvasPixel, imagePosition } from '../src/utils/imageSelection';
-import type { CutoutResponse } from '../src/services/api';
+import { canvasPixel, imagePosition, catalogSelection, nearestCatalogSource } from '../src/utils/imageSelection';
+import type { CutoutResponse, CatalogSource } from '../src/services/api';
 
 // Small identity fixtures only; these are not scientific observations.
 const image = { width: 2, height: 2, wcs: { ra_grid: [359.99, 0.01, 100, null], dec_grid: [-1, 0, 1, null] } } as unknown as CutoutResponse;
@@ -23,4 +23,22 @@ describe('image region selection', () => {
   test('missing sky calibration cannot open a fabricated position', () => {
     expect(imagePosition({ ...image, wcs: {} } as CutoutResponse, 0, 0)).toBeNull();
   });
+});
+
+
+const source = { id: 'fixture-source', name: 'Fixture source', ra_deg: 359.999, dec_deg: -20, pixel_x: .25, pixel_y: .75 } as CatalogSource;
+test('catalog selection preserves exact sky position and subpixel projection, without substituting the clicked pixel', () => {
+  expect(catalogSelection(image, source, [.25,.75])).toEqual({ x:.25, y:.75, ra:359.999, dec:-20, label:'Fixture source', sourceId:'fixture-source' });
+});
+test('outside, divergent or missing WCS projections never clamp or select a different position', () => {
+  for (const pixel of [null, [NaN,1], [1], [-.51,0], [1.5,0], [0,1.5]]) expect(catalogSelection(image, source, pixel)).toBeNull();
+  expect(catalogSelection(image, source, [-.49,0])).not.toBeNull();
+});
+test('marker hit selection uses nearest subpixel center rather than list order', () => {
+  const farther = {...source, id:'farther', pixel_x:.9};
+  expect(nearestCatalogSource([farther,source], .76,1.25,10)?.id).toBe(source.id);
+  expect(nearestCatalogSource([source],100,100,10)).toBeNull();
+});
+test('different catalog records sharing coordinates keep their selected identities', () => {
+  expect(catalogSelection(image, {...source,id:'record-b'}, [.25,.75])?.sourceId).toBe('record-b');
 });

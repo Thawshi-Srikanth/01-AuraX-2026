@@ -104,6 +104,14 @@ The displayed date and locally calibrated wavelength belong to the displayed ima
 These individual exposures may have different passbands and sky grids; brightness
 changes alone do not establish variability or motion.
 
+Excluded/nonfinite pixels show a labeled checkerboard in the FITS viewer. Valid
+low-brightness and zero-valued pixels keep their actual display values; no data is
+filled or interpolated. Source markers use full-SIP reference positions. Clicking
+a nearby catalog name selects and centers that exact reference position in the
+current image, with a separate link for catalog details. Sources outside the image
+are reported without substituting another position. Shared coordinates are shown
+as shared catalog records, not independently resolved objects.
+
 Click a region inside a loaded FITS image to open the floating Region inspector.
 It shows a magnified image detail, an exact three-pixel-radius aperture, a local
 background annulus, usable-area flux and formal variance uncertainty. It reuses

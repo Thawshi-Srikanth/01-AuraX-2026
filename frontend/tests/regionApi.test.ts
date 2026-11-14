@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { angularSize, fetchRegionAnalysis, fetchRegionCatalog } from '../src/services/api';
+import { angularSize, fetchRegionAnalysis, fetchRegionCatalog, projectCatalogPosition } from '../src/services/api';
 const original = globalThis.fetch;
 afterEach(() => { globalThis.fetch = original; });
 
@@ -28,4 +28,15 @@ test('catalog context is a separate bounded real lookup with cancellation', asyn
 test('cached miss remains an error instead of inventing measurements', async () => {
   globalThis.fetch = (async () => new Response(JSON.stringify({ detail: 'Image no longer cached' }), { status: 409 })) as typeof fetch;
   await expect(fetchRegionAnalysis('https://example.test/image.fits', 100, 20, 200, 100, 20, new AbortController().signal)).rejects.toThrow('Image no longer cached');
+});
+
+
+test('source projection sends full image SIP header and exact catalog coordinates with cancellation', async () => {
+  let body = ''; let forwarded: AbortSignal | null | undefined;
+  globalThis.fetch = (async (_url: string, init?: RequestInit) => { body = String(init?.body); forwarded = init?.signal; return new Response(JSON.stringify({ pixels: [[1.25, 2.75]] })); }) as typeof fetch;
+  const signal = new AbortController().signal;
+  const wcs = { spatial_wcs_header: 'FULL SIP TEST HEADER' } as import('../src/services/api').WcsMetadata;
+  expect(await projectCatalogPosition(wcs, { ra_deg: 359.999, dec_deg: -20 }, signal)).toEqual([1.25,2.75]);
+  expect(JSON.parse(body)).toEqual({ spatial_wcs_header: 'FULL SIP TEST HEADER', positions: [{ ra:359.999, dec:-20 }] });
+  expect(forwarded).toBe(signal);
 });

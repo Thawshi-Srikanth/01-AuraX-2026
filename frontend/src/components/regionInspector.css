@@ -29,3 +29,8 @@
 .region-inspector button:focus-visible, .region-inspector a:focus-visible, .region-inspector summary:focus-visible { outline:1px solid theme('colors.text.primary'); outline-offset:3px; }
 .region-inspector [role=alert] button { margin-top:8px; text-decoration:underline; }
 @media(max-width:699px) { .region-inspector { top:8px; right:8px; width:calc(100% - 16px); max-height:calc(100% - 16px); } .region-visual canvas { width:112px; height:112px; } .region-inspector-body { padding:12px; } }
+
+.region-source-select { display:block; text-align:left; color:theme('colors.text.primary'); text-decoration:underline; text-underline-offset:3px; font-size:11px; }
+.region-source-select[aria-pressed=true] { font-weight:600; }
+.region-candidates .region-source-details { display:inline-flex; margin-top:5px; color:theme('colors.text.secondary'); font-size:10px; }
+.region-selection-message { margin-top:10px; font-size:11px; }

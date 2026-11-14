@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, Bookmark, Download, Loader2, PanelRightClose, PanelRightOpen, Pause, Play } from 'lucide-react';
 import { NavigationTab, DETECTOR_COLORS } from '../tokens/colors';
-import { ResolvedTarget, fetchObservations, ObservationsResponse, SPHERExObservation, fetchCutout } from '../services/api';
+import { ResolvedTarget, fetchObservations, ObservationsResponse, SPHERExObservation, fetchCutout, projectCatalogPosition } from '../services/api';
 import { FitsCanvas } from '../components/FitsCanvas';
 import { RegionInspector } from '../components/RegionInspector';
 import { ObservationTimeline } from '../components/ObservationTimeline';
@@ -10,7 +10,7 @@ import { isTargetSaved, toggleSaveTarget, exportCutoutJson } from '../utils/coll
 import { createFrameLoader, displayedFrame, FrameRequest, FrameState, frameRequestKey } from '../utils/observationFrames';
 import { matchesObservation } from '../utils/navigation';
 import { useRetainedState } from '../utils/AnalysisContext';
-import type { ImageSelection } from '../utils/imageSelection';
+import { catalogSelection, type ImageSelection } from '../utils/imageSelection';
 import './observations.css';
 
 interface ObservationsViewProps {
@@ -195,7 +195,14 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
               {data?.status === 'no_coverage' && <button type="button" onClick={() => onNavigate('Home')}>Choose another position</button>}
             </div> : imageError ? <div className="images-empty" role="alert"><h2>Selected image unavailable</h2><p>{imageError}</p><button type="button" onClick={retryImage}>Retry image</button><p>Or choose another observation from the list.</p></div>
               : <FitsCanvas cutout={frame?.cutout || null} loading={loadingImage} isPlaying={isPlaying} selectedStretch={stretch} onStretchChange={setStretch} onRetry={retryImage} targetId={targetKey} targetName={target.canonical_name || target.query} targetRa={target.coordinates.ra_deg} targetDec={target.coordinates.dec_deg} accessUrl={frame?.observation.access_url} cutoutSize={size} onCutoutSizeChange={setSize} observationMode toolbarHost={toolbarHost} inspectedRegion={inspected} onInspectRegion={position => { setPlaybackContext(null); if (requestKey) setInspection({ key: requestKey, position }); }} />}
-            {inspected && frame && <RegionInspector key={JSON.stringify([requestKey, inspected.x, inspected.y])} position={inspected} frame={frame} centerRa={target.coordinates.ra_deg} centerDec={target.coordinates.dec_deg} size={size} onClose={() => setInspection(null)} />}
+            {inspected && frame && <RegionInspector key={JSON.stringify([requestKey, inspected.x, inspected.y, inspected.sourceId, inspected.ra, inspected.dec])} position={inspected} frame={frame} centerRa={target.coordinates.ra_deg} centerDec={target.coordinates.dec_deg} size={size} onSelectSource={async (source, signal) => {
+              const pixel = await projectCatalogPosition(frame.cutout.wcs, source, signal);
+              if (signal.aborted) return;
+              const position = catalogSelection(frame.cutout, source, pixel);
+              if (!position) throw new Error('This catalog position is outside the current image. No other position was selected.');
+              setPlaybackContext(null);
+              if (requestKey) setInspection({ key: requestKey, position });
+            }} onClose={() => setInspection(null)} />}
           </div>
         </div>
         {panelOpen && <aside id="image-information" className="images-information" aria-label="Observation details">

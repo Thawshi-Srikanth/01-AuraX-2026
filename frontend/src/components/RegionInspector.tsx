@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useId } from 'react';
 import { X, Circle, ExternalLink } from 'lucide-react';
-import { fetchRegionAnalysis, fetchRegionCatalog, type RegionAnalysis, type RegionCatalog } from '../services/api';
+import { fetchRegionAnalysis, fetchRegionCatalog, type RegionAnalysis, type RegionCatalog, type RegionCatalogRecord } from '../services/api';
 import type { ObservationFrame } from '../utils/observationFrames';
 import type { ImageSelection } from '../utils/imageSelection';
 import './regionInspector.css';
@@ -13,8 +13,9 @@ function RegionPreview({ frame, position }: { frame: ObservationFrame; position:
     const { cutout } = frame;
     const patch = document.createElement('canvas'); patch.width = patch.height = 25;
     const image = patch.getContext('2d')!.createImageData(25, 25);
+    const ix = Math.floor(position.x + .5), iy = Math.floor(position.y + .5);
     for (let y = 0; y < 25; y++) for (let x = 0; x < 25; x++) {
-      const sx = position.x + x - 12, sy = position.y + y - 12;
+      const sx = ix + x - 12, sy = iy + y - 12;
       const index = sy * cutout.width + sx, offset = (y*25+x)*4;
       if (sx < 0 || sy < 0 || sx >= cutout.width || sy >= cutout.height || cutout.valid_pixels?.[index] === false || !Number.isFinite(cutout.pixels[index])) continue;
       const value = Math.round(Math.max(0, Math.min(1, cutout.pixels[index]))*255);
@@ -25,21 +26,31 @@ function RegionPreview({ frame, position }: { frame: ObservationFrame; position:
     ctx.drawImage(patch, 0, 0, 150, 150); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
     for (const radius of [3, 5, 8]) {
       ctx.setLineDash(radius === 3 ? [] : [3, 3]);
-      ctx.beginPath(); ctx.arc(75, 75, radius*6, 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(75 + (position.x-ix)*6, 75 + (position.y-iy)*6, radius*6, 0, Math.PI*2); ctx.stroke();
     }
   }, [frame, position]);
   return <canvas ref={canvas} width={150} height={150} role="img" aria-label="Magnified image detail. Inner circle measures the region; dashed rings estimate the surrounding background. Transparent squares are masked or outside the image." />;
 }
 
-interface Props { position: ImageSelection; frame: ObservationFrame; centerRa: number; centerDec: number; size: number; onClose: () => void }
+interface Props { position: ImageSelection; frame: ObservationFrame; centerRa: number; centerDec: number; size: number; onSelectSource: (source: RegionCatalogRecord, signal: AbortSignal) => Promise<void>; onClose: () => void }
 const number = (value: number | undefined | null, unit = '') => typeof value === 'number' && Number.isFinite(value) ? value.toPrecision(4) + (unit ? ' ' + unit : '') : 'Unavailable';
-export function RegionInspector({ position, frame, centerRa, centerDec, size, onClose }: Props) {
+export function RegionInspector({ position, frame, centerRa, centerDec, size, onSelectSource, onClose }: Props) {
   const heading = useId();
   const close = useRef<HTMLButtonElement>(null);
   const [analysis, setAnalysis] = useState<RegionAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<RegionCatalog | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const selectionRequest = useRef<AbortController | null>(null);
+  const [selectionMessage, setSelectionMessage] = useState<string | null>(null);
+  useEffect(() => { setSelectionMessage(null); return () => selectionRequest.current?.abort(); }, [position]);
+  async function selectSource(source: RegionCatalogRecord) {
+    selectionRequest.current?.abort();
+    const controller = new AbortController(); selectionRequest.current = controller;
+    setSelectionMessage('Selecting ' + source.name + '…');
+    try { await onSelectSource(source, controller.signal); }
+    catch (reason) { if (!controller.signal.aborted) setSelectionMessage(reason instanceof Error ? reason.message : 'Source selection failed.'); }
+  }
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null; close.current?.focus();
@@ -62,7 +73,7 @@ export function RegionInspector({ position, frame, centerRa, centerDec, size, on
   }, [position, frame, centerRa, centerDec, size, retry]);
   const m = analysis?.measurements;
   return <section className="region-inspector" role="dialog" aria-modal="false" aria-labelledby={heading}>
-    <header><div><h2 id={heading}>Region inspector</h2><p>RA {position.ra.toFixed(6)}° · Dec {position.dec.toFixed(6)}°</p></div><button ref={close} type="button" onClick={onClose} aria-label="Close region inspector"><X size={18} /></button></header>
+    <header><div><h2 id={heading}>Region inspector</h2>{position.sourceId && <p>{position.label} · catalog reference, match unverified</p>}<p>RA {position.ra.toFixed(6)}° · Dec {position.dec.toFixed(6)}°</p></div><button ref={close} type="button" onClick={onClose} aria-label="Close region inspector"><X size={18} /></button></header>
     <div className="region-inspector-body">
       <div className="region-visual"><RegionPreview frame={frame} position={position} /><div><h3>Selected image detail</h3><p><Circle size={12} /> Region: 3 px radius</p><p>Dashed ring: local background</p><p>Checkerboard: masked or outside image</p><p>{frame.observation.detector} · {frame.observation.utc_date.replace(/Z$/, '')} UTC</p></div></div>
       <section className="region-reading" aria-label="Image interpretation"><h3>What this image supports</h3>
@@ -78,7 +89,8 @@ export function RegionInspector({ position, frame, centerRa, centerDec, size, on
       <section aria-label="Potential catalog associations"><h3>Nearby catalog objects</h3><p className="region-muted">Within 60″ of the selected point. Possible associations to investigate, not confirmed identifications. Positions have not been corrected for proper motion.</p>
         {!catalog && !catalogError && <p className="region-muted" role="status">Looking up catalog context… Measurements above are independent.</p>}
         {catalogError && <p className="region-muted" role="status">Catalog context unavailable. {catalogError}</p>}
-        {catalog && <>{catalog.sources.length === 0 ? <p>No catalog records returned. This does not establish an uncataloged object.</p> : <ul className="region-candidates">{catalog.sources.slice(0, 5).map(source => <li key={source.id}><a href={'https://simbad.cds.unistra.fr/simbad/sim-id?Ident='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer">{source.name}<ExternalLink size={11} /></a><span>{source.object_type_label || source.object_type} · {source.distance_arcsec.toFixed(2)}″ from point</span></li>)}</ul>}
+        {selectionMessage && <p role="status" className="region-selection-message">{selectionMessage}</p>}
+        {catalog && <>{catalog.sources.length === 0 ? <p>No catalog records returned. This does not establish an uncataloged object.</p> : <ul className="region-candidates">{catalog.sources.slice(0, 5).map(source => <li key={source.id}><button type="button" className="region-source-select" aria-pressed={position.sourceId === source.id} onClick={() => { void selectSource(source); }}>{source.name}</button><a className="region-source-details" aria-label={'Catalog details for '+source.name} href={'https://simbad.cds.unistra.fr/simbad/sim-id?Ident='+encodeURIComponent(source.id)} target="_blank" rel="noreferrer"><ExternalLink size={11} />Catalog details</a><span>{source.object_type_label || source.object_type} · {source.distance_arcsec.toFixed(2)}″ from point</span></li>)}</ul>}
           {catalog.sources.length > 5 && <p className="region-muted">Showing the nearest 5 of {catalog.sources.length} returned records.</p>}{catalog.truncated && <p className="region-muted">Catalog results are limited; other records may exist.</p>}
           {new Set(catalog.sources.map(source => JSON.stringify([source.ra_deg, source.dec_deg]))).size < catalog.sources.length && <p className="region-muted">Some records share reported coordinates; these are not separately resolved sources in this image.</p>}
           <p className="region-muted">{catalog.provenance} · reference positions; image match unverified</p>
