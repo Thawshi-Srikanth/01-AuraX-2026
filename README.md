@@ -7,6 +7,7 @@ This repository is being built progressively, starting with the backend.
 
 - A minimal FastAPI backend with a health endpoint.
 - Explicit configuration of allowed browser origins.
+- Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
 Astronomy endpoints and the frontend have not been migrated yet.
@@ -34,6 +35,21 @@ Set it explicitly for a deployed frontend. Wildcard origins are rejected.
 ```sh
 CORS_ORIGINS=https://your-frontend.example uv run uvicorn app.main:app
 ```
+
+## Local cache
+
+The backend creates an empty SQLite database at `backend/cache/aurax.db` during
+startup. Set `CACHE_DB_PATH` to use another writable filesystem path.
+Importing the application does not create a database or make archive requests.
+
+The internal cache stores JSON metadata with separate namespaces and optional
+expiry. Expired entries are never returned; internal callers can remove them
+with `purge_expired()`. Runtime cache failures return a miss or failed write.
+Invalid storage configuration fails visibly at startup.
+
+There are no public cache-management endpoints or background downloads.
+Cache files are ignored by Git; no observation data or seed database is included.
+The cache does not yet impose a disk quota; bounded background caching comes later.
 
 ## Verify
 

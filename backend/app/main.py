@@ -1,11 +1,15 @@
 """Application entry point, with no archive requests during startup."""
 
 import os
+from contextlib import asynccontextmanager
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+from app.db.cache import CacheManager
 
 VERSION = "0.1.0"
 DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
@@ -44,11 +48,21 @@ def allowed_origins() -> list[str]:
     return origins
 
 
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    default_path = Path(__file__).resolve().parents[2] / "cache" / "aurax.db"
+    application.state.cache = CacheManager(
+        os.getenv("CACHE_DB_PATH", str(default_path))
+    )
+    yield
+
+
 def create_app() -> FastAPI:
     application = FastAPI(
         title="AURAx API",
         description="Scientific API for SPHEREx observations.",
         version=VERSION,
+        lifespan=lifespan,
     )
     application.add_middleware(
         CORSMiddleware,
