@@ -13,6 +13,18 @@ A difference between two images is a starting point for investigation. Before in
 
 Blinking emphasizes changes; it does not establish their cause.
 
+## Browse observations in Images
+
+Play in Images steps through the filtered observation list, even when wavelengths
+or alignment differ. Each loaded image remains visible for one second; playback
+waits for downloads, pauses on a failed image, and stops on manual selection or
+filter changes. Pause is available while buffering. Each image shows its actual
+UTC date and local target wavelength when available.
+
+This is an observation browser. A visible change may come from a different
+passband, registration, background or image quality; it does not establish motion
+or variability. Use the checked sequence in Compare dates for visual comparisons.
+
 ## Use Compare dates
 
 AURAx first checks the wavelength **at your chosen sky position**, then suggests observations within a compatible group. It favours four dates spread over the available time span; if only two or three verified dates are available, it uses those. The images are prepared automatically and open paused. Use **Play** to blink. Play also switches from Grid to Blink for you.

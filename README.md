@@ -97,6 +97,13 @@ Images retain physical brightness, quality masks, and full SIP coordinates from
 Astropy. `/api/catalog/project` maps reference positions through that exact header;
 a projected marker is not a verified image detection or a motion-corrected position.
 
+In Images, Play cycles through the current filtered observations, including different
+wavelengths. Each loaded frame stays visible for one second; playback waits for slow
+images and pauses on failures, manual selections, filter/view changes or navigation.
+The displayed date and locally calibrated wavelength belong to the displayed image.
+These individual exposures may have different passbands and sky grids; brightness
+changes alone do not establish variability or motion.
+
 Wavelengths opens as a wide strip above the Images timeline. It plots measured
 nearest-pixel brightness and variance errors over a fixed 0.75–5 µm axis, leaving
 gaps empty. The first sample comes from the displayed image's exact cached FITS
