@@ -5,7 +5,6 @@ import {
   SpectrumResponse,
   SpectralPoint,
   SpectralFeature,
-  CutoutResponse,
   SPHERExObservation,
   fetchTargetSpectrum,
   fetchCutout,
@@ -13,6 +12,8 @@ import {
 } from '../services/api';
 import { useRetainedState } from '../utils/AnalysisContext';
 import { targetIdentity } from '../utils/navigation';
+import { createFrameLoader, displayedFrame, frameRequestKey, type FrameState } from '../utils/observationFrames';
+import { filterSpectralSamples, nearestSpectralSample, observationForSample, sampleForObservation } from '../utils/wavelengthSelection';
 import { FitsCanvas, AperturePhotometryMetrics } from '../components/FitsCanvas';
 import {
   isTargetSaved,
@@ -143,9 +144,8 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
   }, [selectedWavelength, onWavelengthChange]);
 
   const [stretch, setStretch] = useRetainedState<string>('wavelengths', targetKey, 'stretch', 'zscale');
-  const [cutout, setCutout] = useState<CutoutResponse | null>(null);
-  const [cutoutError, setCutoutError] = useState<string | null>(null);
-  const [loadingCutout, setLoadingCutout] = useState<boolean>(false);
+  const [frameState, setFrameState] = useState<FrameState | null>(null);
+  const [frameLoader] = useState(() => createFrameLoader(fetchCutout));
 
   const [hoveredPoint, setHoveredPoint] = useState<SpectralPoint | null>(null);
   const [showFeatures, setShowFeatures] = useState<boolean>(true);
@@ -169,18 +169,36 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
 
   const svgContainerRef = useRef<SVGSVGElement | null>(null);
 
-  // In-memory LRU Cutout Cache for instantaneous (<1ms) revisit across dated exposures
-  const inMemoryCutoutCache = useRef<Map<string, CutoutResponse>>(new Map());
-  const getCutoutKey = useCallback(
-    (url?: string, s: string = 'zscale', ra?: number, dec?: number) =>
-      `${url || 'default'}::${s}::${ra ?? ''}::${dec ?? ''}::200`,
-    []
-  );
+  const frameRequest = useMemo(() => !loadingObservations && selectedObservation ? {
+    observation: selectedObservation, ra: target.coordinates.ra_deg, dec: target.coordinates.dec_deg, stretch, size: 200,
+  } : null, [loadingObservations, selectedObservation, target.coordinates.ra_deg, target.coordinates.dec_deg, stretch]);
+  const imageKey = frameRequest ? frameRequestKey(frameRequest) : null;
+  const cutout = displayedFrame(frameState, imageKey)?.cutout ?? null;
+  const loadingCutout = !!imageKey && (!frameState || frameState.key !== imageKey || frameState.status === 'loading');
+  const cutoutError = frameState?.key === imageKey && frameState.status === 'error' ? frameState.message : null;
+  useEffect(() => {
+    if (frameRequest) void frameLoader.select(frameRequest, setFrameState);
+    else frameLoader.cancel();
+    return () => frameLoader.cancel();
+  }, [imageKey, frameLoader]);
+
+  const filteredPoints = useMemo(() => filterSpectralSamples(spectrum?.spectral_points ?? [], globalBandFilter, selectedDateFilter),
+    [spectrum, globalBandFilter, selectedDateFilter]);
+  // Detector-wide bounds come from archive metadata, not a single sample's channel width.
+  const detectorBands = useMemo(() => [...new Set(availableObservations.map(o => o.detector))].sort().map(detector => {
+    const observations = availableObservations.filter(o => o.detector === detector);
+    return { detector, label: detector,
+      wavelength_min_um: Math.min(...observations.map(o => o.wavelength_min_um)),
+      wavelength_max_um: Math.max(...observations.map(o => o.wavelength_max_um)),
+      channel_count: (spectrum?.spectral_points ?? []).filter(p => p.detector === detector).length };
+  }), [availableObservations, spectrum]);
 
   // 1. Fetch real dated IRSA observations for target
   useEffect(() => {
     let isCancelled = false;
     setLoadingObservations(true);
+    setAvailableObservations([]);
+    setSelectedObservation(null);
     fetchObservations(target.coordinates.ra_deg, target.coordinates.dec_deg)
       .then((res) => {
         if (!isCancelled) {
@@ -271,12 +289,12 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
   const filteredFeatures = useMemo(() => {
     if (!spectrum) return [];
     if (globalBandFilter === 'ALL') return spectrum.spectral_features;
-    const bandObj = spectrum.detector_bands.find((b) => b.detector === globalBandFilter);
+    const bandObj = detectorBands.find((b) => b.detector === globalBandFilter);
     if (!bandObj) return spectrum.spectral_features;
     return spectrum.spectral_features.filter(
       (f) => f.wavelength_um >= bandObj.wavelength_min_um && f.wavelength_um <= bandObj.wavelength_max_um
     );
-  }, [spectrum, globalBandFilter]);
+  }, [spectrum, globalBandFilter, detectorBands]);
 
   // Keep selectedObservation synchronized with cascading filters
   useEffect(() => {
@@ -299,168 +317,41 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
     setReference(next);
   }, [selectedObservation, setRetainedObservation, setReference]);
 
-  // 3. Fetch calibrated FITS cutout for the selected dated IRSA exposure
+  const activePoint = useMemo(() => sampleForObservation(filteredPoints, selectedObservation), [filteredPoints, selectedObservation]);
+  const wavelengthForObservation = (observation: SPHERExObservation) =>
+    sampleForObservation(spectrum?.spectral_points ?? [], observation)?.wavelength_um
+      ?? (observation === selectedObservation ? cutout?.wavelength_um : undefined)
+      ?? observation.wavelength_center_um;
+
+  const selectWavelengthOnChart = useCallback((wavelength: number, detector?: string, exact?: SpectralPoint) => {
+    const pool = detector ? filteredPoints.filter(p => p.detector === detector) : filteredPoints;
+    const point = exact ?? nearestSpectralSample(pool, wavelength);
+    if (!point) return;
+    setSelectedWavelength(point.wavelength_um);
+    setActiveDetector(point.detector);
+    setSelectedObservation(observationForSample(availableObservations, point));
+  }, [filteredPoints, availableObservations, setSelectedWavelength, setActiveDetector]);
+
+  // Exposure, detector and measurement identities must agree, including shared obs_ids.
   useEffect(() => {
-    let isCancelled = false;
-    const controller = new AbortController();
-    setCutout(null);
-    setCutoutError(null);
-
-    if (loading || loadingObservations) {
-      setLoadingCutout(true);
-      return;
-    }
-
-    if (!selectedObservation) { setCutout(null); setLoadingCutout(false); return; }
-    const accessUrl = selectedObservation.access_url;
-    const ra = target.coordinates.ra_deg;
-    const dec = target.coordinates.dec_deg;
-    const key = getCutoutKey(accessUrl, stretch, ra, dec);
-
-    const cached = inMemoryCutoutCache.current.get(key);
-    if (cached) {
-      setCutout(cached);
-      setLoadingCutout(false);
-      return;
-    }
-
-    setLoadingCutout(true);
-
-    fetchCutout(accessUrl, stretch, ra, dec, 200, controller.signal)
-      .then((res) => {
-        if (!isCancelled) {
-          if (res.status === 'success') {
-            inMemoryCutoutCache.current.set(key, res);
-          }
-          setCutout(res);
-          setLoadingCutout(false);
-        }
-      })
-      .catch((error) => {
-        if (!isCancelled) { setLoadingCutout(false); setCutoutError(error instanceof Error ? error.message : 'Image unavailable'); }
-      });
-
-    return () => {
-      isCancelled = true;
-      controller.abort();
-    };
-  }, [
-    selectedObservation,
-    stretch,
-    target.coordinates.ra_deg,
-    target.coordinates.dec_deg,
-    loading,
-    loadingObservations,
-    getCutoutKey,
-  ]);
-
-  // Find the spectral channel closest to selected wavelength
-  const activePoint = useMemo(() => {
-    if (!spectrum || spectrum.spectral_points.length === 0) return null;
-    return spectrum.spectral_points.reduce((prev, curr) =>
-      Math.abs(curr.wavelength_um - selectedWavelength) <
-      Math.abs(prev.wavelength_um - selectedWavelength)
-        ? curr
-        : prev
-    );
-  }, [spectrum, selectedWavelength]);
-
-  // Helper: Select wavelength on chart and synchronize active detector, band filter, and closest IRSA exposure
-  const selectWavelengthOnChart = useCallback(
-    (wlUm: number, explicitDet?: string) => {
-      const clampedWl = Math.max(0.75, Math.min(5.0, parseFloat(wlUm.toFixed(4))));
-      setSelectedWavelength(clampedWl);
-
-      // Determine detector for this wavelength
-      let targetDet = explicitDet || activeDetector;
-      if (!explicitDet && spectrum && spectrum.spectral_points.length > 0) {
-        const closestPt = spectrum.spectral_points.reduce((prev, curr) =>
-          Math.abs(curr.wavelength_um - clampedWl) < Math.abs(prev.wavelength_um - clampedWl)
-            ? curr
-            : prev
-        );
-        targetDet = closestPt.detector;
-      }
-
-      if (targetDet !== activeDetector) {
-        setActiveDetector(targetDet);
-      }
-
-      // If user had a single-band filter locked in the dropdown and clicked into a different band on the chart, follow their click
-      if (globalBandFilter !== 'ALL' && globalBandFilter !== targetDet) {
-        setGlobalBandFilter(targetDet);
-        setSelectedDateFilter('ALL');
-      }
-
-      // Immediately switch selectedObservation to the closest IRSA exposure in targetDet (or closest overall if band has 0 exposures)
-      if (availableObservations.length > 0) {
-        const datePool =
-          selectedDateFilter !== 'ALL'
-            ? availableObservations.filter(
-                (o) => o.detector === targetDet && o.date_only === selectedDateFilter
-              )
-            : [];
-        const bandPool =
-          datePool.length > 0
-            ? datePool
-            : availableObservations.filter((o) => o.detector === targetDet);
-        const searchPool = bandPool.length > 0 ? bandPool : availableObservations;
-
-        const closestObs = searchPool.reduce((prev, curr) =>
-          Math.abs((curr.wavelength_center_um ?? Infinity) - clampedWl) <
-          Math.abs((prev.wavelength_center_um ?? Infinity) - clampedWl)
-            ? curr
-            : prev
-        );
-        setSelectedObservation(closestObs);
-      }
-    },
-    [
-      activeDetector,
-      spectrum,
-      globalBandFilter,
-      availableObservations,
-      selectedDateFilter,
-    ]
-  );
-
-  // Also synchronize detector and observation whenever activePoint changes (e.g. initial load)
-  useEffect(() => {
-    if (!activePoint) return;
-    if (activePoint.detector !== activeDetector) {
-      setActiveDetector(activePoint.detector);
-    }
-    if (
-      availableObservations.length > 0 &&
-      selectedObservation?.obs_id !== activePoint.obs_id
-    ) {
-      const bandMatches = availableObservations.filter(
-        (o) => o.detector === activePoint.detector && o.obs_id === activePoint.obs_id
-      );
-      if (bandMatches.length > 0) {
-        const bestMatch = bandMatches.reduce((prev, curr) =>
-          Math.abs((curr.wavelength_center_um ?? Infinity) - activePoint.wavelength_um) <
-          Math.abs((prev.wavelength_center_um ?? Infinity) - activePoint.wavelength_um)
-            ? curr
-            : prev
-        );
-        setSelectedObservation(bestMatch);
-      }
-    }
-  }, [activePoint, activeDetector, availableObservations, selectedObservation]);
+    if (!selectedObservation) return;
+    setActiveDetector(selectedObservation.detector);
+    const point = sampleForObservation(filteredPoints, selectedObservation);
+    if (point) setSelectedWavelength(point.wavelength_um);
+  }, [selectedObservation, filteredPoints, setActiveDetector, setSelectedWavelength]);
 
   // Step channel by delta (-1 or +1) across the 102 spectral channels
   const stepChannel = useCallback(
     (delta: -1 | 1) => {
-      if (!spectrum || spectrum.spectral_points.length === 0) return;
-      const pts = spectrum.spectral_points;
+      if (!filteredPoints.length) return;
+      const pts = filteredPoints;
       const currentIdx = activePoint
         ? pts.findIndex((p) => p.channel_index === activePoint.channel_index)
         : 0;
-      const nextIdx = (Math.max(0, currentIdx) + delta + pts.length) % pts.length;
-      selectWavelengthOnChart(pts[nextIdx].wavelength_um, pts[nextIdx].detector);
+      const nextIdx = activePoint ? (currentIdx + delta + pts.length) % pts.length : delta === 1 ? 0 : pts.length - 1;
+      selectWavelengthOnChart(pts[nextIdx].wavelength_um, pts[nextIdx].detector, pts[nextIdx]);
     },
-    [spectrum, activePoint, selectWavelengthOnChart]
+    [filteredPoints, activePoint, selectWavelengthOnChart]
   );
 
   // Keyboard shortcuts: [ArrowLeft] / [ArrowRight] step channels
@@ -491,7 +382,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
       setViewRange({ minUm: 0.75, maxUm: 5.0 });
     } else if (spectrum) {
       setActiveDetector(bandVal);
-      const bandObj = spectrum.detector_bands.find((b) => b.detector === bandVal);
+      const bandObj = detectorBands.find((b) => b.detector === bandVal);
       if (bandObj) {
         const pad = (bandObj.wavelength_max_um - bandObj.wavelength_min_um) * 0.08;
         setViewRange({
@@ -555,7 +446,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
 
   const fitCurrentBand = () => {
     if (!spectrum) return;
-    const bandObj = spectrum.detector_bands.find((b) => b.detector === activeDetector);
+    const bandObj = detectorBands.find((b) => b.detector === activeDetector);
     if (!bandObj) return;
     const pad = (bandObj.wavelength_max_um - bandObj.wavelength_min_um) * 0.08;
     setViewRange({
@@ -581,17 +472,11 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
     return counts;
   }, [availableObservations]);
 
-  // Visible spectral points inside [viewRange.minUm, viewRange.maxUm]
-  const visiblePoints = useMemo(() => {
-    if (!spectrum) return [];
-    return spectrum.spectral_points.filter(
-      (p) => p.wavelength_um >= viewRange.minUm - 0.05 && p.wavelength_um <= viewRange.maxUm + 0.05
-    );
-  }, [spectrum, viewRange]);
+  const visiblePoints = useMemo(() => filteredPoints.filter(p => p.wavelength_um >= viewRange.minUm - .05 && p.wavelength_um <= viewRange.maxUm + .05), [filteredPoints, viewRange]);
 
   // Min and max fluxes for SVG chart scaling (auto-scales to visible wavelength window)
   const { minFlux, maxFlux } = useMemo(() => {
-    const pts = visiblePoints.length > 0 ? visiblePoints : spectrum?.spectral_points || [];
+    const pts = visiblePoints.length > 0 ? visiblePoints : filteredPoints;
     if (pts.length === 0) {
       return { minFlux: 0, maxFlux: 2.0 };
     }
@@ -602,7 +487,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
     const minF = low - pad;
     const maxF = high + pad;
     return { minFlux: minF, maxFlux: maxF };
-  }, [spectrum, visiblePoints]);
+  }, [filteredPoints, visiblePoints]);
 
   // Coordinate mapping functions for active [viewRange.minUm, viewRange.maxUm]
   const getX = (wl: number) =>
@@ -744,7 +629,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
             <span>Sample {activePoint ? `${activePoint.channel_index + 1}/${spectrum?.total_channels}` : '—'}</span>
             <span className="text-[#888E9B]">·</span>
             <span>
-              {activePoint ? activePoint.wavelength_um.toFixed(3) : selectedWavelength.toFixed(3)} µm
+              {activePoint ? `${activePoint.wavelength_um.toFixed(3)} µm` : 'Wavelength unavailable'}
             </span>
             <span className="text-[#888E9B]">·</span>
             <span className="text-[#888E9B]">R={activePoint?.resolving_power.toFixed(1) ?? '—'}</span>
@@ -752,7 +637,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
 
           <InfoTooltip
             title="Measured SPHEREx samples"
-            description="SPHEREx uses 6 Linear Variable Filter (LVF) detectors (D1–D6) spanning 0.75–5.00 µm. Each archival IRSA exposure samples the target at a specific date and wavelength slice along the LVF gradient."
+            description="Only returned measurements are plotted. This is a limited set of samples from individual exposures, not a complete 102-channel spectrum. No missing channels are filled."
           />
 
           <button
@@ -816,10 +701,10 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
               <option value="ALL">
                 All D1–D6 (0.75–5.00 µm · {availableObservations.length} img)
               </option>
-              {spectrum?.detector_bands.map((b) => (
+              {detectorBands.map((b) => (
                 <option key={b.detector} value={b.detector}>
-                  {b.detector} ({b.wavelength_min_um}–{b.wavelength_max_um} µm · R~
-                  {b.resolving_power_nominal} · {exposureCountsByBand[b.detector] || 0} img)
+                  {b.detector} ({b.wavelength_min_um.toFixed(3)}–{b.wavelength_max_um.toFixed(3)} µm ·
+                  {b.channel_count} {b.channel_count === 1 ? 'sample' : 'samples'} · {exposureCountsByBand[b.detector] || 0} img)
                 </option>
               ))}
             </select>
@@ -874,14 +759,14 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                     key={`${obs.obs_id}::${obs.detector}`}
                     value={`${obs.obs_id}::${obs.detector}`}
                   >
-                    {obs.detector} · {obs.date_only} · λ {(obs.wavelength_center_um?.toFixed(2) ?? 'unknown')} µm
+                    {obs.detector} · {obs.date_only} {obs.utc_date.slice(11, 19)} UTC · λ {(wavelengthForObservation(obs)?.toFixed(3) ?? 'unknown')} µm
                   </option>
                 ))
               )}
             </select>
             <InfoTooltip
               title="Archival IRSA Exposure"
-              description="Selects a dated SPHEREx Level 2 FITS exposure (filtered by Band and Date), updating the minimal cutout stamp and jumping the spectrum cursor to that exposure's wavelength."
+              description="Selects the exact dated exposure and detector. A measured sample is highlighted only when it belongs to that exposure. Unknown wavelengths remain unavailable."
               align="center"
             />
           </div>
@@ -890,11 +775,12 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
           <div className="flex items-center space-x-1 bg-[#050507] border border-[#1C2029] rounded px-2 py-1">
             <span className="text-[#888E9B] text-[10px] uppercase">Feature:</span>
             <select
+              disabled={!filteredFeatures.length}
               value={selectedFeatureName}
               onChange={(e) => handleFeatureDropdownChange(e.target.value)}
               className="bg-[#050507] text-white text-[11px] font-mono focus:outline-none cursor-pointer"
             >
-              <option value="">Jump to line ({filteredFeatures.length})...</option>
+              <option value="">{filteredFeatures.length ? `Jump to line (${filteredFeatures.length})` : 'No features identified'}</option>
               {filteredFeatures.map((feat) => (
                 <option key={feat.name} value={feat.name}>
                   {feat.name} ({feat.wavelength_um} µm · {feat.feature_type})
@@ -984,7 +870,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
 
             <div className="flex items-center bg-[#050507] border border-[#1C2029] rounded overflow-hidden">
               <span className="px-2 py-0.5 text-[#888E9B] border-r border-[#1C2029]">
-                {viewRange.minUm.toFixed(2)}–{viewRange.maxUm.toFixed(2)} µm ({zoomLevel.toFixed(1)}×)
+                {filteredPoints.length} measured {filteredPoints.length === 1 ? 'sample' : 'samples'} · {viewRange.minUm.toFixed(2)}–{viewRange.maxUm.toFixed(2)} µm ({zoomLevel.toFixed(1)}×)
               </span>
               <button
                 type="button"
@@ -1022,7 +908,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
 
             <InfoTooltip
               title="Spectrum Zoom & Pan"
-              description="Scroll mouse wheel over the spectrum to zoom into narrow molecular features (up to 10×). Drag horizontally when zoomed in to pan across wavelengths, or click any channel to inspect it."
+              description="Zoom or pan across wavelengths. Click a measured sample to select its exact exposure; gaps contain no measured samples."
               align="right"
             />
           </div>
@@ -1036,7 +922,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
             <div className="h-full flex items-center justify-center text-[12px] text-rose-400">
               {error}
             </div>
-          ) : spectrum && spectrum.spectral_points.length > 0 ? (
+          ) : spectrum && filteredPoints.length > 0 ? (
             <svg
               ref={svgContainerRef}
               className={`w-full h-full ${isPanningChart ? 'cursor-grabbing' : 'cursor-crosshair'}`}
@@ -1061,7 +947,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
               {/* Clipped Plot Area for Zoomable Passbands, Grid, Curve & Points */}
               <g clipPath="url(#spectrumPlotClip)">
                 {/* 6 Detector Passband Columns */}
-                {spectrum.detector_bands.map((band) => {
+                {detectorBands.map((band) => {
                   const xStart = getX(band.wavelength_min_um);
                   const xEnd = getX(band.wavelength_max_um);
                   const bandW = Math.max(2, xEnd - xStart);
@@ -1115,7 +1001,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                             fontFamily="monospace"
                             textAnchor="middle"
                           >
-                            {band.detector} · R~{band.resolving_power_nominal}
+                            {band.detector}
                           </text>
                         </g>
                       )}
@@ -1242,7 +1128,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                 {/* Independent measured samples may have different dates. No inferred continuum. */}
                 {/* Vertical ±1σ Error Bar Whiskers per Channel */}
                 {showErrorBars &&
-                  spectrum.spectral_points.map((p) => {
+                  filteredPoints.map((p) => {
                     if (
                       p.wavelength_um < viewRange.minUm - 0.05 ||
                       p.wavelength_um > viewRange.maxUm + 0.05
@@ -1276,7 +1162,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                   })}
 
                 {/* 102 Individual Spectrophotometric Channel Nodes */}
-                {spectrum.spectral_points.map((p) => {
+                {filteredPoints.map((p) => {
                   if (
                     p.wavelength_um < viewRange.minUm - 0.05 ||
                     p.wavelength_um > viewRange.maxUm + 0.05
@@ -1300,7 +1186,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                       onMouseLeave={() => setHoveredPoint(null)}
                       onClick={(e) => {
                         e.stopPropagation();
-                        selectWavelengthOnChart(p.wavelength_um, p.detector);
+                        selectWavelengthOnChart(p.wavelength_um, p.detector, p);
                       }}
                     />
                   );
@@ -1314,7 +1200,8 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                     const cursorX = getX(activePoint.wavelength_um);
                     const cursorY = getY(activePoint.flux_mjy_sr);
                     const color = DETECTOR_COLORS[activePoint.detector] || '#FFFFFF';
-                    const badgeW = 172;
+                    const badgeText = `Sample ${activePoint.channel_index + 1} · ${activePoint.wavelength_um.toFixed(3)} µm · ${activePoint.flux_mjy_sr.toFixed(2)} MJy/sr`;
+                    const badgeW = Math.min(PLOT_W - 12, Math.max(172, badgeText.length * 6.2 + 16));
                     const badgeX = Math.min(
                       PAD_L + PLOT_W - badgeW - 6,
                       Math.max(PAD_L + 6, cursorX - badgeW / 2)
@@ -1357,8 +1244,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                           fontFamily="monospace"
                           textAnchor="middle"
                         >
-                          Sample {activePoint.channel_index + 1} · {activePoint.wavelength_um.toFixed(3)}
-                          µm · {activePoint.flux_mjy_sr.toFixed(2)} MJy/sr
+                          {badgeText}
                         </text>
                       </g>
                     );
@@ -1448,14 +1334,14 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                 strokeWidth="1.2"
               />
             </svg>
-          ) : null}
+          ) : <div role="status" className="h-full flex items-center justify-center text-xs text-text-secondary">No measured samples for these filters. Archive images may still be available.</div>}
         </div>
       </div>
 
       {/* COMPACT 3-COLUMN BOTTOM DECK: [1. Measured samples] | [2. Filtered Exposure Details] | [3. Minimal FITS Stamp] */}
-      <div className="h-60 border-t border-border-subtle bg-bg-surface grid grid-cols-1 lg:grid-cols-12 shrink-0 overflow-hidden">
+      <div className="h-72 lg:h-60 border-t border-border-subtle bg-bg-surface grid grid-cols-1 lg:grid-cols-12 shrink-0 overflow-y-auto lg:overflow-hidden">
         {/* COLUMN 1: Channel Spectrophotometry & Scrubbing (5 cols) */}
-        <div className="lg:col-span-5 border-b lg:border-b-0 lg:border-r border-border-subtle p-3.5 flex flex-col justify-between overflow-y-auto">
+        <div className="lg:col-span-5 min-h-56 lg:min-h-0 border-b lg:border-b-0 lg:border-r border-border-subtle p-3.5 flex flex-col justify-between overflow-y-auto overflow-x-hidden">
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-1.5">
@@ -1471,6 +1357,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
               <div className="flex items-center space-x-1.5 text-[11px] font-mono">
                 <button
                   type="button"
+                  disabled={!filteredPoints.length}
                   onClick={() => stepChannel(-1)}
                   className="px-2 py-0.5 rounded bg-[#050507] border border-[#1C2029] text-[#888E9B] hover:text-white hover:border-white/30 cursor-pointer"
                 >
@@ -1478,6 +1365,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                 </button>
                 <button
                   type="button"
+                  disabled={!filteredPoints.length}
                   onClick={() => stepChannel(1)}
                   className="px-2 py-0.5 rounded bg-[#050507] border border-[#1C2029] text-[#888E9B] hover:text-white hover:border-white/30 cursor-pointer"
                 >
@@ -1491,12 +1379,13 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
               <div className="flex items-center justify-between text-[10px] font-mono text-[#888E9B] mb-1">
                 <span>{viewRange.minUm.toFixed(2)} µm</span>
                 <span className="text-white font-semibold">
-                  λ = {activePoint ? activePoint.wavelength_um.toFixed(4) : selectedWavelength.toFixed(3)} µm
+                  {activePoint ? `λ = ${activePoint.wavelength_um.toFixed(4)} µm` : 'No measured sample selected'}
                 </span>
                 <span>{viewRange.maxUm.toFixed(2)} µm</span>
               </div>
               <input
                 type="range"
+                disabled={!filteredPoints.length}
                 min={viewRange.minUm}
                 max={viewRange.maxUm}
                 step="0.005"
@@ -1532,7 +1421,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
               <div className="bg-[#050507] border border-[#1C2029] px-2.5 py-1.5 rounded">
                 <div className="text-[9px] text-[#888E9B] uppercase">Error / SNR</div>
                 <div className="text-white font-semibold mt-0.5">
-                  {activePoint ? `±${activePoint.flux_error_mjy_sr.toFixed(3)} (${Number.isFinite(activePoint.snr) ? `${activePoint.snr}σ` : 'S/N unavailable'})` : '—'}
+                  {activePoint ? `±${activePoint.flux_error_mjy_sr.toFixed(3)} (${Number.isFinite(activePoint.snr) ? `S/N ${activePoint.snr.toFixed(1)}` : 'S/N unavailable'})` : '—'}
                 </div>
               </div>
             </div>
@@ -1565,8 +1454,8 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
               <div className="flex items-center justify-between w-full text-[10px] font-mono text-[#888E9B]">
                 <span>Measured pixel brightness; samples can come from different dates. No spectral features have been identified.</span>
                 <InfoTooltip
-                  title="Continuum vs. Spectral Line"
-                  description="Continuum regions measure thermal blackbody emission from stellar photospheres or dust grains without discrete molecular absorption."
+                  title="Individual measurements"
+                  description="Each point is an individual measured pixel brightness. Samples may span dates; no continuous spectrum or feature identification has been computed."
                   align="right"
                 />
               </div>
@@ -1575,7 +1464,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
         </div>
 
         {/* COLUMN 2: Active Filtered Exposure Summary & Quick List (4 cols) */}
-        <div className="lg:col-span-4 border-b lg:border-b-0 lg:border-r border-border-subtle p-3.5 flex flex-col justify-between overflow-hidden">
+        <div className="lg:col-span-4 min-h-56 lg:min-h-0 border-b lg:border-b-0 lg:border-r border-border-subtle p-3.5 flex flex-col justify-between overflow-hidden">
           <div className="flex items-center justify-between mb-2 shrink-0">
             <div className="flex items-center space-x-1.5">
               <span className="text-[11px] uppercase tracking-wider font-mono text-[#888E9B]">
@@ -1636,12 +1525,12 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                         />
                         <span>{obs.detector}</span>
                       </span>
-                      <span className="text-white font-medium shrink-0">{obs.date_only}</span>
+                      <span className="text-white font-medium shrink-0">{obs.date_only}<small className="block text-text-secondary">{obs.utc_date.slice(11, 19)} UTC</small></span>
                     </div>
 
                     <div className="flex items-center space-x-1.5 shrink-0">
                       <span className="bg-[#0B0D11] border border-[#1C2029] px-1.5 py-0.2 rounded text-[10px] text-white">
-                        λ {(obs.wavelength_center_um?.toFixed(2) ?? 'unknown')} µm
+                        λ {(wavelengthForObservation(obs)?.toFixed(3) ?? 'unknown')} µm
                       </span>
                       {isSelected && (
                         <span className="bg-white text-black px-1.5 py-0.2 rounded text-[9px] font-bold">
@@ -1657,7 +1546,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
         </div>
 
         {/* COLUMN 3: Minimal FITS Cutout Stamp (3 cols) */}
-        <div className="lg:col-span-3 bg-black relative flex flex-col overflow-hidden">
+        <div className="lg:col-span-3 min-h-64 lg:min-h-0 bg-black relative flex flex-col overflow-hidden">
           {/* Minimal Solid Stamp Header with Stretch Dropdown */}
           <div className="px-3 py-1.5 bg-[#0B0D11] border-b border-[#1C2029] flex items-center justify-between text-[11px] font-mono tabular-nums shrink-0">
             <div className="flex items-center space-x-1.5 truncate">
@@ -1667,7 +1556,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                     {selectedObservation.detector} · {selectedObservation.date_only}
                   </span>
                   <span className="bg-[#050507] border border-[#1C2029] px-1.5 py-0.2 rounded text-[10px] text-[#888E9B]">
-                    {(selectedObservation.wavelength_center_um?.toFixed(2) ?? 'unknown')} µm
+                    {(wavelengthForObservation(selectedObservation)?.toFixed(3) ?? 'unknown')} µm
                   </span>
                 </>
               ) : (

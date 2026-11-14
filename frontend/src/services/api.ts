@@ -24,6 +24,7 @@ export interface ResolvedTarget {
 }
 
 export interface SPHERExObservation {
+  artifact_id?: string;
   obs_id: string;
   detector: string;
   band_name: string;
@@ -353,6 +354,7 @@ export interface SpectralFeature {
 type str = string;
 
 export interface SpectralPoint {
+  artifact_id?: string;
   obs_id?: string;
   utc_date?: string;
   channel_index: number;
