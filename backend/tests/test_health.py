@@ -17,7 +17,7 @@ def test_health_and_api_contract(monkeypatch):
             "version": "0.1.0",
         }
         schema = client.get("/openapi.json").json()
-        assert set(schema["paths"]) == {"/health"}
+        assert set(schema["paths"]) == {"/health", "/api/resolve"}
         assert client.get("/api/observations").status_code == 404
 
 

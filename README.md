@@ -6,11 +6,13 @@ This repository is being built progressively, starting with the backend.
 ## Available now
 
 - A minimal FastAPI backend with a health endpoint.
+- Real SIMBAD name resolution and manual ICRS coordinate validation.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-Astronomy endpoints and the frontend have not been migrated yet.
+Observation search, image processing, spectra, comparisons, and the frontend
+have not been migrated yet.
 
 ## Run the backend
 
@@ -35,6 +37,35 @@ Set it explicitly for a deployed frontend. Wildcard origins are rejected.
 ```sh
 CORS_ORIGINS=https://your-frontend.example uv run uvicorn app.main:app
 ```
+
+## Resolve a target
+
+```sh
+curl --get http://127.0.0.1:8000/api/resolve --data-urlencode "target=M101"
+curl 'http://127.0.0.1:8000/api/resolve?ra=180&dec=-15.5'
+```
+
+Supply either a name (up to 200 characters) or both RA and Dec, in degrees.
+RA must be in `[0, 360)` and Dec in `[-90, 90]`. Coordinates are not silently
+wrapped. Manual positions are labelled user supplied and are not catalog matches.
+
+Named targets are queried through the [SIMBAD TAP service](https://simbad.cds.unistra.fr/simbad/sim-tap)
+with fallback on service failure to the
+[Harvard mirror published by CDS](https://cds.unistra.fr/). The response records
+the actual endpoint used. Queries use [PyVO](https://pyvo.readthedocs.io/en/stable/api/pyvo.dal.TAPService.html).
+Coordinates are formatted with Astropy. The response preserves numeric precision,
+SIMBAD object-type codes, available coordinate/motion references, the retrieval
+time, and a `cached` flag. Missing proper motions remain null; RA proper motion
+is the catalog's mu-alpha times cos(delta). No observation epoch is inferred from
+the ICRS reference frame. Aliases are not queried in this initial feature.
+
+Successful named results are cached for 24 hours. There are no hard-coded target
+records or synthetic fallbacks. Unknown names return 404, ambiguous matches 409,
+service failures 503, and unusable catalog data 502. Invalid/mixed inputs return
+400 or validation error 422. Unknown names and failures are not cached.
+Network requests use a 5-second connect timeout and 15-second read-inactivity
+timeout per endpoint; these are not a total request deadline. Archive work runs in a worker
+thread so it does not block the API event loop.
 
 ## Local cache
 

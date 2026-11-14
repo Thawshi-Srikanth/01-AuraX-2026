@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "AURAx scientific API"
 requires-python = ">=3.11"
 dependencies = [
+    "astropy>=6,<9",
     "fastapi>=0.110,<1",
+    "pyvo>=1.5,<2",
+    "requests>=2.31,<3",
     "uvicorn[standard]>=0.28,<1",
 ]
 
