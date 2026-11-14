@@ -10,7 +10,7 @@ The filter does not bend incoming light into a rainbow. Each position transmits 
 
 ## Read wavelength at the target
 
-Click a region inside a loaded FITS image to open the Region inspector. Its local
+Click a region inside a loaded FITS image to open the Region tab in the right panel. Its local
 brightness and background estimate use quality-screened pixels within half the
 narrower local passband of the selected point. Insufficient comparable region or
 background coverage remains inconclusive. The passband in measurement details

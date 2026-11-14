@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useId } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { X, Circle, ExternalLink } from 'lucide-react';
 import { fetchRegionAnalysis, fetchRegionCatalog, type RegionAnalysis, type RegionCatalog, type RegionCatalogRecord } from '../services/api';
 import type { ObservationFrame } from '../utils/observationFrames';
@@ -32,11 +32,9 @@ function RegionPreview({ frame, position }: { frame: ObservationFrame; position:
   return <canvas ref={canvas} width={150} height={150} role="img" aria-label="Magnified image detail. Inner circle measures the region; dashed rings estimate the surrounding background. Transparent squares are masked or outside the image." />;
 }
 
-interface Props { position: ImageSelection; frame: ObservationFrame; centerRa: number; centerDec: number; size: number; onSelectSource: (source: RegionCatalogRecord, signal: AbortSignal) => Promise<void>; onClose: () => void }
+interface Props { position: ImageSelection; frame: ObservationFrame; centerRa: number; centerDec: number; size: number; onSelectSource: (source: RegionCatalogRecord, signal: AbortSignal) => Promise<void>; onClear: () => void }
 const number = (value: number | undefined | null, unit = '') => typeof value === 'number' && Number.isFinite(value) ? value.toPrecision(4) + (unit ? ' ' + unit : '') : 'Unavailable';
-export function RegionInspector({ position, frame, centerRa, centerDec, size, onSelectSource, onClose }: Props) {
-  const heading = useId();
-  const close = useRef<HTMLButtonElement>(null);
+export function RegionInspector({ position, frame, centerRa, centerDec, size, onSelectSource, onClear }: Props) {
   const [analysis, setAnalysis] = useState<RegionAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [catalog, setCatalog] = useState<RegionCatalog | null>(null);
@@ -53,14 +51,6 @@ export function RegionInspector({ position, frame, centerRa, centerDec, size, on
   }
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null; close.current?.focus();
-    return () => { if (previous?.isConnected) previous.focus(); };
-  }, []);
-  useEffect(() => {
-    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', escape); return () => document.removeEventListener('keydown', escape);
-  }, [onClose]);
-  useEffect(() => {
     const controller = new AbortController(); let current = true;
     setAnalysis(null); setError(null); setCatalog(null); setCatalogError(null);
     const timer = window.setTimeout(() => {
@@ -72,8 +62,8 @@ export function RegionInspector({ position, frame, centerRa, centerDec, size, on
     return () => { current = false; window.clearTimeout(timer); controller.abort(); };
   }, [position, frame, centerRa, centerDec, size, retry]);
   const m = analysis?.measurements;
-  return <section className="region-inspector" role="dialog" aria-modal="false" aria-labelledby={heading}>
-    <header><div><h2 id={heading}>Region inspector</h2>{position.sourceId && <p>{position.label} · catalog reference, match unverified</p>}<p>RA {position.ra.toFixed(6)}° · Dec {position.dec.toFixed(6)}°</p></div><button ref={close} type="button" onClick={onClose} aria-label="Close region inspector"><X size={18} /></button></header>
+  return <section className="region-inspector" aria-label="Selected region">
+    <header><div><h2>Selected region</h2>{position.sourceId && <p>{position.label} · catalog reference, match unverified</p>}<p>RA {position.ra.toFixed(6)}° · Dec {position.dec.toFixed(6)}°</p></div><button type="button" onClick={onClear} aria-label="Clear region selection" title="Clear selection"><X size={18} /></button></header>
     <div className="region-inspector-body">
       <div className="region-visual"><RegionPreview frame={frame} position={position} /><div><h3>Selected image detail</h3><p><Circle size={12} /> Region: 3 px radius</p><p>Dashed ring: local background</p><p>Checkerboard: masked or outside image</p><p>{frame.observation.detector} · {frame.observation.utc_date.replace(/Z$/, '')} UTC</p></div></div>
       <section className="region-reading" aria-label="Image interpretation"><h3>What this image supports</h3>

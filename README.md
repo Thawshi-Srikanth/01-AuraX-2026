@@ -115,7 +115,9 @@ current image, with a separate link for catalog details. Sources outside the ima
 are reported without substituting another position. Shared coordinates are shown
 as shared catalog records, not independently resolved objects.
 
-Click a region inside a loaded FITS image to open the floating Region inspector.
+Click a region inside a loaded FITS image to open the Region tab in the existing
+right panel, beside Details and Provenance. Before selection, the tab asks you to
+select a region or source.
 It shows a magnified image detail, an exact three-pixel-radius aperture, a local
 background annulus, usable-area flux and formal variance uncertainty. It reuses
 the displayed cached FITS without an additional archive download. Background
