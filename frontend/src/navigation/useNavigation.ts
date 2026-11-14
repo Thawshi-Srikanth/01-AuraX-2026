@@ -34,5 +34,10 @@ export function useNavigation() {
     }
     setRoute({ view, target, error: null });
   }
-  return { route, navigate };
+  function selectTarget(target: Position) {
+    const url = routeUrl(route.view, target);
+    if (window.location.pathname + window.location.search !== url) window.history.pushState(null, '', url);
+    setRoute({ view: route.view, target, error: null });
+  }
+  return { route, navigate, selectTarget };
 }

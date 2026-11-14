@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchHealth } from './services/api';
+import type { TargetResult } from './services/api';
+import { TargetSearch } from './components/TargetSearch';
 import { views, routeUrl } from './navigation/session';
 import { useNavigation } from './navigation/useNavigation';
 
@@ -11,7 +13,13 @@ const labels: Record<Connection, string> = {
 };
 
 export function App() {
-  const { route, navigate } = useNavigation();
+  const { route, navigate, selectTarget } = useNavigation();
+  const [resolved, setResolved] = useState<TargetResult | null>(null);
+  const selected = resolved && route.target?.ra === resolved.coordinates.ra_deg && route.target?.dec === resolved.coordinates.dec_deg ? resolved : null;
+  function select(result: TargetResult) {
+    setResolved(result);
+    selectTarget({ ra: result.coordinates.ra_deg, dec: result.coordinates.dec_deg });
+  }
   const currentView = views.find((view) => view.id === route.view)!;
   const [connection, setConnection] = useState<Connection>('checking');
   const [attempt, setAttempt] = useState(0);
@@ -66,27 +74,31 @@ export function App() {
           <p className="connection-warning">The backend could not be reached. Check that it is running, then retry.</p>
         )}
         {route.target && !route.error && (
-          <p className="target-position">ICRS position · RA {route.target.ra}° · Dec {route.target.dec}°
-            <span>Coordinates only; no catalog match verified.</span>
-          </p>
+          <section className="target-position" aria-label="Selected target">
+            <strong>{selected?.canonical_name || 'ICRS position'}</strong>
+            <span>RA {route.target.ra}° · Dec {route.target.dec}° · ICRS</span>
+            <span>{selected?.provenance || 'Coordinates only; no catalog match verified.'}</span>
+            {selected && <>
+              <span>Type: {selected.object_type} · Coordinate epoch: {selected.coordinates.epoch || 'Not supplied'}</span>
+              {selected.coordinate_reference && <span>Coordinate reference: {selected.coordinate_reference}</span>}
+              {selected.source_url && <a href={selected.source_url} target="_blank" rel="noopener noreferrer">Catalog source</a>}
+            </>}
+          </section>
         )}
+        {route.view === 'home' && !route.error ? <TargetSearch target={route.target} onSelect={select} /> :
         <section className="empty-workspace" aria-labelledby="empty-heading">
           <div>
             {route.error ? <>
               <h2 id="empty-heading">Unable to open this link</h2>
               <p role="alert">{route.error}</p>
               <a className="action-link" href="/" onClick={(event) => navigate(event, 'home', null)}>Open Home</a>
-            </> : route.view === 'home' ? <>
-              <p className="eyebrow">Target</p>
-              <h2 id="empty-heading">{route.target ? 'No observation selected' : 'No target selected'}</h2>
-              <p>{route.target ? 'A sky position is selected. No observation has been loaded.' : 'Select a sky position to view its observations.'}</p>
             </> : <>
               <h2 id="empty-heading">View unavailable</h2>
               <p>{currentView.label} tools are not available yet.</p>
               <a className="action-link" href={routeUrl('home', route.target)} onClick={(event) => navigate(event, 'home')}>Open Home</a>
             </>}
           </div>
-        </section>
+        </section>}
       </main>
       <footer><span>AURAx</span><p>Connection status checks the API only. Archive availability is checked separately.</p></footer>
     </div>

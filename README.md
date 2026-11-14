@@ -22,8 +22,9 @@ This repository is being built progressively, starting with the backend.
 - Automated backend tests.
 
 The frontend currently provides a branded workspace shell, validated navigation
-and session restoration, and a real backend connection check. Target search, the image viewer, and the remaining frontend
-features have not yet been migrated.
+and session restoration, a real backend connection check, and target search by
+name or ICRS coordinates. The image viewer and remaining science views have not
+yet been migrated.
 
 ## Run the backend
 
@@ -69,7 +70,7 @@ The Vite development proxy is not a production deployment server.
 
 The shell reuses `aura.svg` and defines the shared dark palette in
 `frontend/src/tokens.css`. It includes responsive layout and keyboard focus/skip
-navigation; target search and other science views are separate migration chunks.
+navigation. Home includes target search; other science views remain separate migration chunks.
 
 Navigation uses the original view paths: Home `/`, Explore `/sky`, Observations
 `/images`, Compare dates `/compare`, Wavelengths `/wavelengths`, Collections
@@ -89,6 +90,27 @@ saved. Unknown paths and malformed coordinates show an error with a Home recover
 link. Invalid links do not overwrite the previous valid session. Missing, corrupt,
 blocked, or full session storage does not prevent navigation. A static host must
 serve `index.html` for these application paths to support direct links and reloads.
+
+On Home, **Search the sky** supports either an object name/catalog identifier
+(up to 200 characters) or RA/Dec in decimal degrees. Both modes use the real
+`/api/resolve` endpoint. Coordinates are locally validated before a request;
+named results preserve catalog provenance, source links, and coordinate references.
+Manual positions never claim a catalog match, and missing coordinate epochs remain
+unspecified. Catalog type codes are displayed as returned by the backend.
+
+The browser stops waiting after 40 seconds. **Cancel search**, a changed history
+position, or leaving Home invalidates the pending result so it cannot replace a
+later selection. Cancelling does not guarantee an already running backend/catalog
+request stops. Input errors, not-found and ambiguous names, unavailable catalogs,
+and malformed responses remain errors; failed searches preserve the prior selected
+position. There is no synthetic target or fallback name resolution.
+
+A successful lookup updates the coordinate URL and tab session. Catalog metadata
+is kept only in memory during this app visit; reloads retain coordinates but show
+an unverified position until another lookup, rather than restoring a catalog match
+from user-editable storage. No proper-motion propagation is performed. Live browser
+checks verified a real Barnard's Star lookup and manual-coordinate validation;
+external SIMBAD availability is still independent of backend health.
 
 Verify the frontend from `frontend/`:
 
