@@ -378,6 +378,7 @@ export interface DetectorBandInfo {
 }
 
 export interface SpectrumResponse {
+  message?: string;
   target_name: string;
   ra_deg: number;
   dec_deg: number;
@@ -394,14 +395,15 @@ export interface SpectrumResponse {
 export async function fetchTargetSpectrum(
   targetName: string,
   ra?: number,
-  dec?: number
+  dec?: number,
+  signal?: AbortSignal
 ): Promise<SpectrumResponse> {
   const params = new URLSearchParams({ target_name: targetName });
   if (ra !== undefined) params.append('ra', normalizeRa(ra).toString());
   if (dec !== undefined) params.append('dec', dec.toString());
 
   const url = `${API_BASE_URL}/api/spectrum?${params.toString()}`;
-  const response = await fetch(url);
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`Failed to extract spectral profile: ${response.statusText}`);
   }
