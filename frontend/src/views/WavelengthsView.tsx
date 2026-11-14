@@ -741,13 +741,13 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
             />
             <span>{activeDetector}</span>
             <span className="text-[#888E9B]">·</span>
-            <span>Sample {(activePoint?.channel_index ?? 0) + 1}/{spectrum?.total_channels ?? 0}</span>
+            <span>Sample {activePoint ? `${activePoint.channel_index + 1}/${spectrum?.total_channels}` : '—'}</span>
             <span className="text-[#888E9B]">·</span>
             <span>
               {activePoint ? activePoint.wavelength_um.toFixed(3) : selectedWavelength.toFixed(3)} µm
             </span>
             <span className="text-[#888E9B]">·</span>
-            <span className="text-[#888E9B]">R={activePoint?.resolving_power || 41}</span>
+            <span className="text-[#888E9B]">R={activePoint?.resolving_power.toFixed(1) ?? '—'}</span>
           </span>
 
           <InfoTooltip
@@ -1434,7 +1434,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                 textAnchor="middle"
               >
                 Wavelength λ (µm) — Scroll to Zoom ({zoomLevel.toFixed(1)}×), Drag to Pan, Click to
-                Inspect Channel
+                Inspect sample
               </text>
 
               {/* Main Plot Frame Borders */}
@@ -1452,7 +1452,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
         </div>
       </div>
 
-      {/* COMPACT 3-COLUMN BOTTOM DECK: [1. Channel Telemetry] | [2. Filtered Exposure Details] | [3. Minimal FITS Stamp] */}
+      {/* COMPACT 3-COLUMN BOTTOM DECK: [1. Measured samples] | [2. Filtered Exposure Details] | [3. Minimal FITS Stamp] */}
       <div className="h-60 border-t border-border-subtle bg-bg-surface grid grid-cols-1 lg:grid-cols-12 shrink-0 overflow-hidden">
         {/* COLUMN 1: Channel Spectrophotometry & Scrubbing (5 cols) */}
         <div className="lg:col-span-5 border-b lg:border-b-0 lg:border-r border-border-subtle p-3.5 flex flex-col justify-between overflow-y-auto">
@@ -1460,10 +1460,10 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-1.5">
                 <span className="text-[11px] uppercase tracking-wider font-mono text-[#888E9B]">
-                  Channel Telemetry
+                  Measured samples
                 </span>
                 <InfoTooltip
-                  title="Calibrated Channel Photometry"
+                  title="Measured pixel surface brightness"
                   description="Each SPHEREx channel measures surface brightness in MegaJanskys per steradian (MJy/sr) with resolving power R = λ / Δλ ranging from R~41 (D1–D3) to R~130 (D5–D6)."
                 />
               </div>
@@ -1474,14 +1474,14 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
                   onClick={() => stepChannel(-1)}
                   className="px-2 py-0.5 rounded bg-[#050507] border border-[#1C2029] text-[#888E9B] hover:text-white hover:border-white/30 cursor-pointer"
                 >
-                  ← Prev Ch
+                  ← Previous sample
                 </button>
                 <button
                   type="button"
                   onClick={() => stepChannel(1)}
                   className="px-2 py-0.5 rounded bg-[#050507] border border-[#1C2029] text-[#888E9B] hover:text-white hover:border-white/30 cursor-pointer"
                 >
-                  Next Ch →
+                  Next sample →
                 </button>
               </div>
             </div>
@@ -1509,7 +1509,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
             {/* 4 Solid Telemetry Badges */}
             <div className="grid grid-cols-4 gap-2 text-[11px] font-mono tabular-nums">
               <div className="bg-[#050507] border border-[#1C2029] px-2.5 py-1.5 rounded">
-                <div className="text-[9px] text-[#888E9B] uppercase">Channel</div>
+                <div className="text-[9px] text-[#888E9B] uppercase">Sample</div>
                 <div className="text-white font-semibold mt-0.5">
                   {activePoint ? `Sample ${activePoint.channel_index + 1} (${activePoint.detector})` : '—'}
                 </div>
@@ -1523,7 +1523,7 @@ export const WavelengthsView: React.FC<WavelengthsViewProps> = ({
               </div>
 
               <div className="bg-[#050507] border border-[#1C2029] px-2.5 py-1.5 rounded">
-                <div className="text-[9px] text-[#888E9B] uppercase">Flux F_λ</div>
+                <div className="text-[9px] text-[#888E9B] uppercase">Brightness</div>
                 <div className="text-white font-semibold mt-0.5">
                   {activePoint ? `${activePoint.flux_mjy_sr.toFixed(3)} MJy/sr` : '—'}
                 </div>

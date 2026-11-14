@@ -50,7 +50,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
   });
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
-  const [spectrum, setSpectrum] = useState<SpectrumResponse | null>(null);
+  const [spectrumResult, setSpectrumResult] = useState<{ key: string; data?: SpectrumResponse; error?: string } | null>(null);
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -75,29 +75,33 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
   const activeItem = useMemo(() => {
     return (
       filteredItems.find((i) => i.id === selectedId) ||
-      items.find((i) => i.id === selectedId) ||
       filteredItems[0] ||
       null
     );
-  }, [filteredItems, items, selectedId]);
+  }, [filteredItems, selectedId]);
 
-  // Fetch 102-channel SED for the active saved target
+  const spectrum = spectrumResult?.key === activeItem?.id ? spectrumResult?.data ?? null : null;
+  const spectrumError = spectrumResult?.key === activeItem?.id ? spectrumResult?.error : null;
+
+  // A result is only displayed or exported for the saved target it belongs to.
   useEffect(() => {
     if (!activeItem) {
-      setSpectrum(null);
+      setSpectrumResult(null);
       return;
     }
     let cancelled = false;
+    const key = activeItem.id;
+    setSpectrumResult(null);
     fetchTargetSpectrum(
       activeItem.target.canonical_name || activeItem.target.query,
       activeItem.target.coordinates.ra_deg,
       activeItem.target.coordinates.dec_deg
     )
       .then((res) => {
-        if (!cancelled) setSpectrum(res);
+        if (!cancelled) setSpectrumResult({ key, data: res });
       })
-      .catch(() => {
-        if (!cancelled) setSpectrum(null);
+      .catch((error) => {
+        if (!cancelled) setSpectrumResult({ key, error: error instanceof Error ? error.message : 'Measured samples unavailable.' });
       });
 
     return () => {
@@ -246,6 +250,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                 </h1>
                 <div className="text-[12px] text-[#888E9B] mt-0.5">
                   {activeItem.target.object_type} · {activeItem.target.provenance}
+                  <span className="block text-[10px] text-[#888E9B]">Saved metadata · not revalidated</span>
                 </div>
               </div>
 
@@ -297,9 +302,9 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                     <option value="" disabled>
                       Export
                     </option>
-                    <option value="csv">CSV Spectrum (.csv)</option>
-                    <option value="ipac">NASA/IPAC Table (.tbl)</option>
-                    <option value="votable">IVOA VOTable (.xml)</option>
+                    <option value="csv" disabled={!spectrum}>CSV Spectrum (.csv)</option>
+                    <option value="ipac" disabled={!spectrum}>NASA/IPAC Table (.tbl)</option>
+                    <option value="votable" disabled={!spectrum}>IVOA VOTable (.xml)</option>
                     <option value="manifest">All Saved Targets (.json)</option>
                   </select>
                 </div>
@@ -353,7 +358,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                     : '—'}
                 </div>
                 <div className="text-[10px] font-mono text-[#888E9B]">
-                  {activeItem.target.proper_motion ? 'mas / yr (ICRS)' : 'Stationary / Extragalactic'}
+                  {activeItem.target.proper_motion ? 'mas / yr (ICRS)' : 'Not provided'}
                 </div>
               </div>
 
@@ -365,12 +370,12 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                   {spectrum ? `${spectrum.peak_flux_mjy_sr.toFixed(2)} MJy/sr` : '—'}
                 </div>
                 <div className="text-[10px] font-mono text-[#888E9B] tabular-nums">
-                  {spectrum ? `Mean ${spectrum.mean_flux_mjy_sr.toFixed(2)} MJy/sr` : '102 channels'}
+                  {spectrum ? `${spectrum.total_channels} measured samples · mean ${spectrum.mean_flux_mjy_sr.toFixed(2)} MJy/sr` : spectrumError || 'Loading measured samples…'}
                 </div>
               </div>
             </div>
 
-            {/* 3. Flush 102-Channel Spectral Curve */}
+            {/* 3. Measured spectral samples */}
             {spectrum && (
               <div className="px-8 py-6 border-b border-[#1C2029]">
                 <div className="flex items-center justify-between mb-3">
@@ -393,7 +398,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                 <div
                   onClick={() => handleOpenInTab(activeItem, 'Wavelengths')}
                   className="h-36 w-full cursor-pointer group"
-                  title="Click to open interactive 102-channel spectrometer"
+                  title="Click to open measured wavelength samples"
                 >
                   <svg viewBox="0 0 880 120" className="w-full h-full overflow-visible">
                     <line x1="0" y1="20" x2="880" y2="20" stroke="#1C2029" strokeWidth="0.75" />
@@ -403,28 +408,14 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                       const pts = spectrum.spectral_points;
                       if (pts.length === 0) return null;
                       const fluxes = pts.map((p) => p.flux_mjy_sr);
-                      const minF = Math.min(...fluxes) * 0.9;
-                      const maxF = Math.max(0.1, Math.max(...fluxes) * 1.1);
+                      const low = Math.min(...fluxes), high = Math.max(...fluxes);
+                      const pad = Math.max((high - low) * .1, Math.abs(low) * .05, .001);
+                      const minF = low - pad, maxF = high + pad;
                       const getX = (w: number) => 8 + ((w - 0.75) / (5.0 - 0.75)) * 864;
                       const getY = (f: number) =>
                         102 - ((f - minF) / Math.max(0.01, maxF - minF)) * 84;
-                      const pathD = pts
-                        .map(
-                          (p, idx) =>
-                            `${idx === 0 ? 'M' : 'L'} ${getX(p.wavelength_um).toFixed(1)} ${getY(
-                              p.flux_mjy_sr
-                            ).toFixed(1)}`
-                        )
-                        .join(' ');
                       return (
                         <>
-                          <path
-                            d={pathD}
-                            fill="none"
-                            stroke="#FFFFFF"
-                            strokeWidth="1.25"
-                            className="opacity-85 group-hover:opacity-100 transition-opacity"
-                          />
                           {pts.map((p) => (
                             <circle
                               key={p.channel_index}
