@@ -8,11 +8,12 @@ This repository is being built progressively, starting with the backend.
 - A minimal FastAPI backend with a health endpoint.
 - Real SIMBAD name resolution and manual ICRS coordinate validation.
 - Bounded SPHEREx Level 2 observation metadata search through IRSA.
+- Internal complete-FITS retrieval and calibration-preserving parsing.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-Image processing, spectra, comparisons, and the frontend have not been migrated yet.
+The image API/viewer, spectra, comparisons, and the frontend have not been migrated yet.
 
 ## Run the backend
 
@@ -98,6 +99,48 @@ coordinates and limit. Empty and partial responses are not cached. Responses
 include retrieval time, source, and cache status. Network requests have a 5-second
 connect timeout and 30-second read-inactivity timeout, not a total deadline.
 No image downloads or background jobs run when searching.
+
+## FITS retrieval and parsing
+
+The internal `FitsStore` service downloads target-centred cutouts from direct
+IRSA Level 2 product URLs returned by observation search. This step adds no new
+public endpoint; the image API follows in a separate migration chunk.
+
+```python
+from app.services.fits_download import FitsStore
+from app.services.fits_parser import open_observation
+
+# access_url comes from an actual /api/observations response.
+store = FitsStore("cache/fits")
+result = store.fetch(access_url, ra=ra_deg, dec=dec_deg, size_deg=0.03)
+with open_observation(result.path) as observation:
+    x, y = observation.target_pixel(ra_deg, dec_deg)
+    wavelength_um, channel_width_um = observation.wavelength_at(x, y)
+```
+
+The parser retains the science image, integer quality flags, variance, zodiacal
+model, PSF/ePSF, full celestial SIP solution, and tabulated wavelength WCS.
+It preserves native array values, NaNs, headers, processing version, and units;
+it does not subtract backgrounds, mask flags, integrate flux, or replace pixels.
+Arrays and WCS objects should be used inside the open-file context.
+
+Science planes must have matching two-dimensional shapes, with a maximum of
+2048 pixels per axis. Surface-brightness and variance units must be compatible
+with MJy/sr and its square, respectively. Missing calibration, invalid dimensions,
+incomplete files, and present-but-invalid checksums are rejected. Missing checksum
+keywords are permitted and do not imply checksum verification. The requested
+target must fall within the celestial image and have usable wavelength calibration.
+
+Downloads allow HTTPS IRSA products only and reject redirects, partial HTTP
+responses, HTML/DataLink responses, and files over 128 MiB. Cutout widths must be
+greater than zero and at most 1.5 degrees. Connections have a 5-second connect and
+30-second read-inactivity timeout. A 90-second transfer budget is checked between
+chunks; an in-progress read can still run until its read timeout.
+Validated files are published atomically to the runtime cache; failed temporary
+downloads are removed. Cache identity includes the exact URL, target, and width.
+There is no sample fallback, automatic retry, background download, or total disk
+quota yet. The caller supplies the runtime cache directory; source data stays
+out of Git.
 
 ## Local cache
 
