@@ -27,6 +27,28 @@ The copied frontend connects to the new resolver, observations, calibrated image
 measured spectral samples, catalog projection, and background comparison jobs.
 Archive availability and scientific compatibility still determine which data can be shown.
 
+## Start development in one click
+
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and
+[Bun](https://bun.sh/docs/installation) once. Docker is optional.
+
+- **Windows:** double-click `dev.cmd`. A checkout under `\\wsl.localhost` or
+  `\\wsl$` runs inside its WSL distribution, using uv and Bun installed there.
+- **WSL, Linux or macOS:** run `./dev` from the repository root.
+
+The launcher checks locked dependencies, starts the backend and frontend, waits
+for the API proxy to respond, and opens the app. Logs stay in one terminal;
+**Ctrl+C stops both servers**. Clicking again reopens the existing managed session.
+If default ports are occupied, free ports are selected and displayed. Other
+running applications are left alone.
+
+Native development keeps its cache under `backend/cache/native-dev/`, separate
+from manual-server and Docker caches. `./dev --help` lists optional ports,
+`--no-browser`, and a custom cache directory. Existing root or Docker `.env` files
+are not required by this launcher.
+
+The commands below remain available when running servers separately for debugging.
+
 ## Run the backend
 
 Requires Python 3.11 or newer and [uv](https://docs.astral.sh/uv/).

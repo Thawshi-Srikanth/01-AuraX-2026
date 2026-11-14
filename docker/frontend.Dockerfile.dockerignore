@@ -1,9 +1,10 @@
 **
-!Dockerfile.frontend
+!docker/
+!docker/frontend.Dockerfile
 !frontend/
 !frontend/**
-!nginx/
-!nginx/**
+!docker/nginx/
+!docker/nginx/**
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
@@ -13,8 +14,8 @@ frontend/.env.*
 frontend/**/.env
 frontend/**/.env.*
 frontend/**/.git/
-nginx/**/*.pem
-nginx/**/*.key
+docker/nginx/**/*.pem
+docker/nginx/**/*.key
 
 # Keep runtime data and credentials out of every stage.
 **/*.pem

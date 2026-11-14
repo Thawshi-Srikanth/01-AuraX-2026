@@ -1,4 +1,4 @@
-# Optional overlay: -f docker-compose.prod.yml -f docker-compose.tls.yml
+# Optional overlay: -f compose.prod.yml -f compose.tls.yml
 services:
   frontend:
     environment:

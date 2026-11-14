@@ -2,24 +2,18 @@ name: Container checks and images
 
 on:
   push:
-    branches: [main, codex/deployment-setup]
+    branches: [main]
     paths:
-      - "Dockerfile*"
+      - "docker/**"
       - ".dockerignore"
-      - "docker-compose*.yml"
-      - ".env.example"
-      - "nginx/**"
       - "scripts/check_containers.py"
       - "backend/**"
       - "frontend/**"
       - ".github/workflows/containers.yml"
   pull_request:
     paths:
-      - "Dockerfile*"
+      - "docker/**"
       - ".dockerignore"
-      - "docker-compose*.yml"
-      - ".env.example"
-      - "nginx/**"
       - "scripts/check_containers.py"
       - "backend/**"
       - "frontend/**"
@@ -48,7 +42,7 @@ jobs:
   publish:
     name: Publish ${{ matrix.component }}
     needs: check
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/codex/deployment-setup')
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -80,7 +74,7 @@ jobs:
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
-          file: Dockerfile.${{ matrix.component }}
+          file: docker/${{ matrix.component }}.Dockerfile
           target: production
           platforms: linux/amd64,linux/arm64
           push: true
@@ -110,6 +104,6 @@ jobs:
         run: |
           export IMAGE_PREFIX="ghcr.io/${GITHUB_REPOSITORY,,}"
           export IMAGE_TAG="sha-${GITHUB_SHA}"
-          docker compose -f docker-compose.prod.yml pull
+          docker compose -f docker/compose.prod.yml pull
           python3 scripts/check_containers.py --production-only --skip-build \
             --image-prefix "$IMAGE_PREFIX" --tag "$IMAGE_TAG"

@@ -3,8 +3,8 @@ name: aurax-dev
 services:
   backend:
     build:
-      context: .
-      dockerfile: Dockerfile.backend
+      context: ..
+      dockerfile: docker/backend.Dockerfile
       target: development
     init: true
     environment:
@@ -17,14 +17,14 @@ services:
     ports:
       - "127.0.0.1:${DEV_BACKEND_PORT:-8000}:8000"
     volumes:
-      - ./backend:/app
+      - ../backend:/app
       - backend-cache:/data
     stop_grace_period: 150s
 
   frontend:
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ..
+      dockerfile: docker/frontend.Dockerfile
       target: development
     init: true
     environment:
@@ -33,7 +33,7 @@ services:
     ports:
       - "127.0.0.1:${DEV_FRONTEND_PORT:-5173}:5173"
     volumes:
-      - ./frontend:/app
+      - ../frontend:/app
       - frontend-modules:/app/node_modules
     depends_on:
       backend:

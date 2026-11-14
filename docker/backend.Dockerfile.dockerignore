@@ -1,5 +1,6 @@
 **
-!Dockerfile.backend
+!docker/
+!docker/backend.Dockerfile
 !backend/
 !backend/pyproject.toml
 !backend/uv.lock

@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+set -eu
+PROJECT_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+cd "$PROJECT_ROOT"
+if command -v uv >/dev/null 2>&1; then
+    UV_BIN=$(command -v uv)
+elif [ -x "$HOME/.local/bin/uv" ]; then
+    UV_BIN="$HOME/.local/bin/uv"
+else
+    echo "Install uv before starting AURAx; see README.md." >&2
+    exit 1
+fi
+exec "$UV_BIN" run --project "$PROJECT_ROOT/backend" --locked python "$PROJECT_ROOT/scripts/dev.py" "$@"
