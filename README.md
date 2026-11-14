@@ -12,11 +12,13 @@ This repository is being built progressively, starting with the backend.
 - Image cutout API with physical values, quality masks, and display stretching.
 - Measured nearest-pixel spectral samples with variance-derived uncertainties.
 - Real SIMBAD catalog cone search with source references and angular distances.
+- Full-SIP, wavelength-screened visual comparison of two observations.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The image viewer, comparisons, and the frontend have not been migrated yet.
+The image viewer, compatible-date discovery, multi-date sequences, and frontend
+have not been migrated yet.
 
 ## Run the backend
 
@@ -237,6 +239,57 @@ variability; reprocessed products are correlated. These samples must not be
 presented as a complete, simultaneous source spectrum. See the
 [IRSA spectrophotometry description](https://irsa.ipac.caltech.edu/onlinehelp/spherex/spherex/sp.html)
 for the distinct source-fitting workflow.
+
+## Compare two observations
+
+Use `POST /api/compare` in <http://127.0.0.1:8000/docs>. Supply:
+
+- `access_url_a` and `access_url_b`: real direct product URLs from observation search.
+- `ra` and `dec`: the common ICRS sky position.
+- `size_deg`: image A angular width, default 0.03 and maximum 0.25 degrees.
+- `stretch`: `zscale`, `linear`, or `log`, with one shared scale for both images.
+
+Choose different exposures from the same detector. Reprocessed versions of one
+exposure are rejected. Identity, detector, and observation time are read from the
+actual FITS headers; client-provided dates or wavelengths are not accepted.
+Image B uses a larger angular footprint to accommodate rotation. Downloaded data
+reuse the complete-FITS cache. Reference A is limited to 256 pixels per axis;
+input B is limited to 512.
+
+The API registers B to A with `reproject.reproject_interp`, bilinear interpolation,
+round-trip coordinate checks, and the complete celestial WCS including SIP.
+It applies the shared pixel-quality policy before interpolation and retains only
+output locations with a complete quality-screened four-pixel B neighbourhood.
+This deliberately also excludes unused zero-weight neighbours and edge pixels.
+Registration is based on WCS, not independently verified image-source alignment.
+
+The wavelength screen uses the approximate WCS-WAVE visualization lookup.
+For the target and every retained A pixel, all four B neighbours must satisfy
+`abs(wave_A-wave_B) + 0.002 um <= min(band_A, band_B)`. The 0.002 um pair margin
+is conservative visualization screening, not a formal uncertainty guarantee.
+IRSA describes approximately 1 nm lookup accuracy and requires dedicated CWAVE
+and CBAND calibration for science analysis; see
+[IRSA's wavelength guidance](https://caltech-ipac.github.io/spherex-archive-documentation/spherex-data-products/).
+The wavelength positions in the initial spectrum endpoint use this same
+approximate lookup and are not precision CWAVE/CBAND calibration.
+
+`blink_ready` is true only when observation times differ, the target passes,
+and at least 16 common quality-screened wavelength-matched pixels remain.
+Only ready responses contain `pixels_a` and `pixels_b`, with nulls outside
+`valid_mask`. `coverage_mask` separately shows common quality coverage before
+the wavelength screen. Both masks use A's row-major grid and full WCS header.
+The pixel-count threshold is an operational minimum, not a detection statistic.
+Joint display limits preserve relative brightness; numerical-flat fields display
+at 0.5 without magnifying interpolation round-off.
+
+Blocked preparations report `incompatible_wavelength`, `no_time_baseline`,
+`no_usable_overlap`, or `insufficient_coverage`, with no blink arrays. Invalid
+requests return HTTP 400/422; unusable data return 502 and retrieval failures 503.
+
+This is **visual comparison only**. No PSF matching, background subtraction,
+difference image, propagated reprojection uncertainty, motion measurement,
+proper-motion estimate, or discovery claim is produced. Automatic compatible-date
+search and multi-date preparation remain separate migration chunks.
 
 ## FITS retrieval and parsing
 
