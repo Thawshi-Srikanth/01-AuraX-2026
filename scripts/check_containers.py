@@ -109,8 +109,8 @@ def main():
         "DEV_FRONTEND_PORT": str(port()),
         "CORS_ORIGINS": "",
     }
-    prod = Stack(f"aurax-check-prod-{token}", ["docker-compose.prod.yml"], env)
-    dev = Stack(f"aurax-check-dev-{token}", ["docker-compose.yml"], env)
+    prod = Stack(f"aurax-check-prod-{token}", ["docker/compose.prod.yml"], env)
+    dev = Stack(f"aurax-check-dev-{token}", ["docker/compose.dev.yml"], env)
     stacks = []
     probes = []
     certs = tempfile.TemporaryDirectory(prefix="aurax-container-cert-")
@@ -138,7 +138,7 @@ def main():
                         "--target",
                         "production",
                         "-f",
-                        f"Dockerfile.{component}",
+                        f"docker/{component}.Dockerfile",
                         "-t",
                         f"{prefix}-{component}:{args.tag}",
                         ".",
@@ -241,7 +241,7 @@ def main():
             "TLS_CERTIFICATE_KEY": "/etc/letsencrypt/privkey.pem",
         }
         tls = Stack(
-            prod.project, ["docker-compose.prod.yml", "docker-compose.tls.yml"], tls_env
+            prod.project, ["docker/compose.prod.yml", "docker/compose.tls.yml"], tls_env
         )
         stacks[-1] = tls
         tls.up()

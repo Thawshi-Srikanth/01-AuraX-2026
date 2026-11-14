@@ -6,11 +6,15 @@ the Compose plugin; Python and Bun are not needed on the deployment host.
 
 ## Local development
 
-From the repository root:
+For native development, double-click `dev.cmd` or run `./dev` from the repository
+root. Docker is optional. All container configuration lives in `docker/`.
+
+For container development, start from the repository root:
 
 ```sh
+cd docker
 cp .env.example .env
-docker compose up --build --wait
+docker compose -f compose.dev.yml up --build --wait
 ```
 
 Open http://localhost:5173; the API is also at http://localhost:8000. Browser requests
@@ -22,8 +26,8 @@ after changing a Dockerfile.
 `DEV_FRONTEND_PORT` and `DEV_BACKEND_PORT` change the host ports if local servers
 already occupy them. Development ports bind to localhost. Host `node_modules` and
 `.venv` directories are not used inside containers. The default project is
-`aurax-dev`, with separate dependency/cache volumes. `docker compose down` stops
-it and retains those volumes.
+`aurax-dev`, with separate dependency/cache volumes.
+`docker compose -f compose.dev.yml down` stops it and retains those volumes.
 
 ## Published images
 
@@ -35,10 +39,9 @@ stacks before publishing production images for `linux/amd64` and `linux/arm64`:
 
 `COMMIT` is the full 40-character Git commit SHA from a successful workflow. Both
 publish jobs and the final pull-only deployment check must finish before
-deploying that tag. There is no mutable `latest`
-tag. Main builds are releases; `codex/deployment-setup` builds provide the same
-commit-tagged images for pre-merge verification. Pull requests check containers
-without publishing. A manual workflow run on main can republish a commit.
+deploying that tag. There is no mutable `latest` tag. Main builds publish releases.
+Pull requests check containers without publishing. A manual workflow run on main
+can republish a commit.
 
 Package visibility is separate from repository visibility. For anonymous pulls,
 set both GHCR packages to Public in GitHub package settings. For private packages,
@@ -48,15 +51,17 @@ The publishing workflow uses its built-in GitHub token.
 
 ## Production: pull and run
 
-Only `docker-compose.prod.yml` and a configured `.env` are required on the host.
+Run these commands from `docker/`, or a deployment directory containing the copied
+configuration files. Only `compose.prod.yml` and a configured `.env` are required
+on the host.
 Application source and server-side builds are unnecessary. Copy `.env.example` to
 `.env` and set `IMAGE_TAG=sha-COMMIT` to a successful workflow tag. The default
 image prefix points to this repository.
 
 ```sh
-docker compose -f docker-compose.prod.yml pull
-docker compose -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 150
-docker compose -f docker-compose.prod.yml ps
+docker compose -f compose.prod.yml pull
+docker compose -f compose.prod.yml up -d --no-build --wait --wait-timeout 150
+docker compose -f compose.prod.yml ps
 curl --fail http://localhost/backend/health
 ```
 
@@ -107,8 +112,8 @@ supplied at runtime, not built into images. The baked-in template is enabled by
 the TLS overlay:
 
 ```sh
-docker compose -f docker-compose.prod.yml -f docker-compose.tls.yml pull
-docker compose -f docker-compose.prod.yml -f docker-compose.tls.yml up -d --no-build --wait --wait-timeout 150
+docker compose -f compose.prod.yml -f compose.tls.yml pull
+docker compose -f compose.prod.yml -f compose.tls.yml up -d --no-build --wait --wait-timeout 150
 ```
 
 HTTP redirects to HTTPS except for the internal health endpoint. Port 443 is
@@ -118,9 +123,12 @@ Use the same two `-f` arguments for later TLS updates and shutdowns.
 
 ## Verify containers
 
+Starting in `docker/`:
+
 ```sh
-docker compose config --quiet
-IMAGE_TAG=sha-COMMIT docker compose -f docker-compose.prod.yml config --quiet
+docker compose -f compose.dev.yml config --quiet
+IMAGE_TAG=sha-COMMIT docker compose -f compose.prod.yml config --quiet
+cd ..
 python3 scripts/check_containers.py
 ```
 
@@ -131,7 +139,7 @@ HTTPS, source mounts and Uvicorn reload. It uses coordinate-only calls; no astro
 archive queries are made. Cleanup touches only its own containers, volumes and
 probe files. Docker image/build caches remain available.
 
-To verify an already-pulled production pair (including optional TLS):
+From the repository root, verify an already-pulled production pair (including optional TLS):
 
 ```sh
 python3 scripts/check_containers.py --production-only --skip-build \

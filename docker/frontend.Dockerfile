@@ -21,10 +21,10 @@ RUN bun run build
 
 FROM nginx:1.28-alpine AS production
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx/upstream.conf /etc/nginx/conf.d/00-upstream.conf
-COPY nginx/default.conf /etc/nginx/conf.d/default.conf
-COPY nginx/includes/ /etc/nginx/aurax/
-COPY nginx/default.ssl.conf /etc/nginx/https/default.conf.template
+COPY docker/nginx/upstream.conf /etc/nginx/conf.d/00-upstream.conf
+COPY docker/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY docker/nginx/includes/ /etc/nginx/aurax/
+COPY docker/nginx/default.ssl.conf /etc/nginx/https/default.conf.template
 EXPOSE 80 443
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=6 \
     CMD wget -q -O /dev/null http://127.0.0.1/nginx-health || exit 1
