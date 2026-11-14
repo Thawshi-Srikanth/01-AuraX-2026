@@ -21,7 +21,9 @@ This repository is being built progressively, starting with the backend.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The image viewer and frontend have not been migrated yet.
+The frontend currently provides a branded workspace shell and a real backend
+connection check. Target search, the image viewer, and the remaining frontend
+features have not yet been migrated.
 
 ## Run the backend
 
@@ -36,6 +38,50 @@ uv run uvicorn app.main:app --host 127.0.0.1 --port 8000
 Open <http://127.0.0.1:8000/health> for the health response and
 <http://127.0.0.1:8000/docs> for the API documentation.
 The health response confirms that the API is running; it does not check external archives.
+
+## Run the frontend
+
+Frontend development takes place on `codex/frontend-development`. Use Bun for
+installation, scripts, and builds. The foundation is verified with Bun 1.3.5.
+
+Start the backend as above, then in another terminal:
+
+```sh
+cd frontend
+bun install --frozen-lockfile
+bun run dev
+```
+
+Open <http://127.0.0.1:5173>. The workspace checks the real `/health` response
+on load and on **Check connection**, with a five-second timeout. Failed requests,
+HTTP errors, and invalid responses show **Backend unavailable** with a retry.
+Connection status verifies the API, not archive availability. No observations or
+targets are fabricated, and the shell makes no astronomy archive requests.
+
+The development server proxies `/backend` to `http://127.0.0.1:8000`. To change
+the backend, copy `frontend/.env.example` to `frontend/.env` and set
+`AURAX_BACKEND_URL`; restart Vite after configuration changes.
+`VITE_API_BASE_URL` defaults to `/backend`. For a production static deployment,
+configure a reverse proxy for that path or supply the backend's public URL at
+build time and configure its `CORS_ORIGINS` for the frontend origin. `VITE_*`
+settings are public browser configuration and must never contain credentials.
+The Vite development proxy is not a production deployment server.
+
+The shell reuses `aura.svg` and defines the shared dark palette in
+`frontend/src/tokens.css`. It includes responsive layout and keyboard focus/skip
+navigation; target search and other science views are separate migration chunks.
+
+Verify the frontend from `frontend/`:
+
+```sh
+bun run lint
+bun test
+bun run build
+```
+
+The frontend workflow runs these checks on pushes to the frontend branch or main
+and on frontend pull requests. Generated builds, dependencies, and local `.env`
+files remain outside Git.
 
 ## Configuration
 
