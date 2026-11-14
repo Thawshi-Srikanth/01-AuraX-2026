@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.db.cache import CacheManager
+from app.routers.catalog import router as catalog_router
 from app.routers.cutout import router as cutout_router
 from app.routers.observations import router as observations_router
 from app.routers.resolve import router as resolve_router
@@ -86,6 +87,7 @@ def create_app() -> FastAPI:
     application.include_router(observations_router)
     application.include_router(cutout_router)
     application.include_router(spectrum_router)
+    application.include_router(catalog_router)
 
     @application.get("/health", response_model=HealthResponse, tags=["Health"])
     async def health() -> HealthResponse:

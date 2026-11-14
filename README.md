@@ -11,11 +11,12 @@ This repository is being built progressively, starting with the backend.
 - Complete-FITS retrieval and calibration-preserving parsing.
 - Image cutout API with physical values, quality masks, and display stretching.
 - Measured nearest-pixel spectral samples with variance-derived uncertainties.
+- Real SIMBAD catalog cone search with source references and angular distances.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The image viewer, catalog lookup, comparisons, and the frontend have not been migrated yet.
+The image viewer, comparisons, and the frontend have not been migrated yet.
 
 ## Run the backend
 
@@ -139,6 +140,43 @@ reprojection, aperture photometry, or integrated flux is performed.
 Unusable archive/calibration content returns HTTP 502. Retrieval or local storage
 failures return 503; invalid product URLs return 400. Invalid query parameters
 return 422. Errors do not return placeholder images.
+
+## Find catalog references
+
+```sh
+curl 'http://127.0.0.1:8000/api/catalog/sources?ra=269.4520769586187&dec=4.693364966576667&radius_arcmin=3&limit=5'
+```
+
+The SIMBAD cone search returns reference objects around an ICRS sky position.
+`radius_arcmin` defaults to 3 and must be greater than zero and at most 30;
+`limit` defaults to 50 and accepts 1–200. RA/Dec are required and follow the same
+strict coordinate validation as other endpoints.
+
+The query uses spherical cone geometry, ordering by angular distance and catalog
+identifier. Astropy independently computes great-circle separations and checks
+that returned positions lie within the cone. The API handles RA wrap and polar
+positions without a flat-sky approximation. Each record includes its canonical
+identifier, unmodified SIMBAD object-type code, coordinates, angular separation,
+and available coordinate/proper-motion references. Missing values remain null.
+
+The endpoint records the actual SIMBAD primary/mirror service and retrieval time.
+The response marks limited results with `truncated`; `sources_count` counts only
+returned records. Bad rows produce `partial` and `rejected_count`, rather than a
+false claim that no sources exist. A valid empty response is `no_sources`, which
+means no records in this SIMBAD query, not an absence of astronomical objects.
+Service failures return HTTP 503 and unusable response schemas return 502.
+
+Successful searches are cached for six hours with exact coordinates, radius,
+and limit. Empty and partial responses are not cached. Mirror fallback follows
+the resolver's connection/read timeout policy and occurs for service failures,
+not for an empty result. No FITS download or image processing is triggered.
+
+These are catalog references, not verified image detections or source matches.
+There are no invented identifiers, magnitudes, brightness rankings, reference
+field lists, or generated fallback stars. Distinct records sharing coordinates
+remain separate and do not imply resolved image components. Proper motion is
+reported when available but is not propagated to an observation epoch. Image
+pixel overlays and cross-identification are separate work.
 
 ## Extract spectral samples
 
