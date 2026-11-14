@@ -159,7 +159,7 @@ export function readRoute(location: { pathname: string; search: string }, previo
     const detector = params.get('detector');
     if (detectorValid(detector) && !(tab === 'Wavelengths' && detector === 'All')) set('detector', detector);
     const size = Number(params.get('size'));
-    if ([200, 400, 800, 2040].includes(size) && !(tab === 'Compare' && size === 2040)) set('size', size);
+    if ([50, 100, 200, 290, 400, 800, 2040].includes(size) && !(tab === 'Compare' && size === 2040)) set('size', size);
     const stretch = params.get('stretch'); if (stretch && ['zscale', 'linear', 'log', 'sqrt', 'asinh'].includes(stretch)) set('stretch', stretch);
     const date = (value: string | null) => value && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value ? value : null;
     const from = date(params.get('from')), to = date(params.get('to'));

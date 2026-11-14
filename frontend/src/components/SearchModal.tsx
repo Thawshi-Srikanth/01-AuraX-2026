@@ -249,8 +249,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({
     const q = query.trim();
     if (!q) return false;
     if (parseCoordinates(q)) return true;
-    return filteredCandidates.length > 0;
-  }, [query, filteredCandidates]);
+    return q.length > 0;
+  }, [query]);
 
   // Auto-focus input on modal open
   useEffect(() => {

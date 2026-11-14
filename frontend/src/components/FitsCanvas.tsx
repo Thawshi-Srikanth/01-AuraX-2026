@@ -213,39 +213,13 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     return () => clearInterval(interval);
   }, [loading, observationMode]);
 
-  // Smooth realistic download progress pacing calibrated for real IRSA archive streams (15-25s)
-  const [progress, setProgress] = useState(4);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-
   useEffect(() => {
-    if (observationMode) return;
-    if (!loading) {
-      setProgress(100);
-      setElapsedSeconds(0);
-      return;
-    }
-
-    setProgress(4);
     setElapsedSeconds(0);
-
-    const secTimer = setInterval(() => {
-      setElapsedSeconds((s) => s + 1);
-    }, 1000);
-
-    const progressTimer = setInterval(() => {
-      setProgress((prev) => {
-        if (prev < 35) return prev + 0.75;
-        if (prev < 65) return prev + 0.45;
-        if (prev < 85) return prev + 0.22;
-        return Math.min(94, prev + 0.08);
-      });
-    }, 250);
-
-    return () => {
-      clearInterval(secTimer);
-      clearInterval(progressTimer);
-    };
-  }, [loading, observationMode]);
+    if (!loading) return;
+    const timer = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+    return () => clearInterval(timer);
+  }, [loading]);
 
   const [colormap, setColormap] = useState<Colormap>(observationMode ? 'greyscale' : 'viridis');
   const [transform, setTransform] = useState<{ zoom: number; panX: number; panY: number }>({
@@ -280,6 +254,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
 
   // Known Celestial Catalog Sources Overlay State (On by default in full Observations view so stars are immediately clickable)
   const [showCatalog, setShowCatalog] = useState<boolean>(!minimal && !observationMode);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [catalogSources, setCatalogSources] = useState<CatalogSource[]>([]);
   const [catalogLimit, setCatalogLimit] = useState<number>(25);
   const [loadingCatalog, setLoadingCatalog] = useState<boolean>(false);
@@ -290,6 +265,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
   // Clear stale sources immediately while FITS cutout or source detection is loading
   useEffect(() => {
     setCatalogSources([]);
+    setCatalogError(null);
     setHoveredSource(null);
     setSelectedSource(null);
 
@@ -323,7 +299,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
         }
       })
       .catch((err) => {
-        console.warn('Failed to fetch catalog sources:', err);
+        if (!cancelled) setCatalogError(err instanceof Error ? err.message : 'Catalog unavailable.');
       })
       .finally(() => {
         if (!cancelled) setLoadingCatalog(false);
@@ -639,7 +615,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
           ? raw_flux[idx]
           : min_flux_mjy_sr + pixels[idx] * (max_flux_mjy_sr - min_flux_mjy_sr);
 
-        if (isNaN(flux)) continue;
+        if (!Number.isFinite(flux) || cutout.valid_pixels?.[idx] === false) continue;
 
         if (dist <= targetRadiusPx) {
           aperSum += flux;
@@ -650,7 +626,8 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
       }
     }
 
-    const meanFlux = aperCount > 0 ? aperSum / aperCount : 0;
+    if (!aperCount || !skyValues.length) { onApertureChange(null); return; }
+    const meanFlux = aperSum / aperCount;
     let skyFlux = 0;
     if (skyValues.length > 0) {
       skyValues.sort((a, b) => a - b);
@@ -754,7 +731,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
         const hasCalibratedPixel = !!cutout.raw_flux && cutout.raw_flux.length > idx;
         const formattedFlux = observationMode && !hasCalibratedPixel
           ? 'Unavailable at this image size'
-          : isNaN(rawFluxVal)
+          : !Number.isFinite(rawFluxVal) || cutout.valid_pixels?.[idx] === false
           ? 'NaN (Masked)'
           : Math.abs(rawFluxVal) < 0.001 && rawFluxVal !== 0
           ? `${rawFluxVal.toExponential(3)} ${unit}`
@@ -770,20 +747,9 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
 
         if (hudWcsRef.current) {
           const wcs = cutout.wcs;
-          if (
-            wcs &&
-            wcs.crval1 != null &&
-            wcs.crval2 != null &&
-            wcs.crpix1 != null &&
-            wcs.crpix2 != null &&
-            wcs.cdelt1 != null &&
-            wcs.cdelt2 != null
-          ) {
-            const dx = (imgX + 1) - wcs.crpix1;
-            const dy = (imgY + 1) - wcs.crpix2;
-            const decDeg = wcs.crval2 + dy * wcs.cdelt2;
-            const cosDec = Math.cos((decDeg * Math.PI) / 180);
-            const raDeg = wcs.crval1 + (dx * wcs.cdelt1) / (Math.abs(cosDec) > 1e-6 ? cosDec : 1);
+          if (wcs?.ra_grid && wcs.dec_grid && Number.isFinite(wcs.ra_grid[idx]) && Number.isFinite(wcs.dec_grid[idx])) {
+            const raDeg = wcs.ra_grid[idx];
+            const decDeg = wcs.dec_grid[idx];
             const { raStr, decStr } = formatCelestialCoordinates(raDeg, decDeg);
             hudWcsRef.current.textContent = `${raStr} · ${decStr}`;
           } else {
@@ -977,17 +943,15 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
                 <select
                   aria-label="Field of View Cutout Resolution"
                   value={
-                    (cutoutSize ?? cutout?.width ?? 200) >= 1024
-                      ? 2040
-                      : (cutoutSize ?? cutout?.width ?? 200)
+                    Math.min(290, cutoutSize ?? 200)
                   }
                   onChange={(e) => onCutoutSizeChange(Number(e.target.value))}
                   className="bg-[#12151C] border border-[#1C2029] hover:border-[#2E3646] rounded px-1.5 py-0.5 text-[11px] font-mono text-white focus:outline-none cursor-pointer"
                 >
-                  <option value={200}>200px (20.7&apos;)</option>
-                  <option value={400}>400px (41.3&apos;)</option>
-                  <option value={800}>800px (82.7&apos;)</option>
-                  <option value={2040}>Full (2040px · 3.5°)</option>
+                  <option value={200}>20.7 arcmin (nominal 200px)</option>
+                  <option value={100}>10.3 arcmin (nominal 100px)</option>
+                  <option value={50}>5.2 arcmin (nominal 50px)</option>
+                  <option value={290}>30 arcmin (maximum)</option>
                 </select>
               </div>
             </>
@@ -1001,7 +965,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
               type="button"
               onClick={() => setShowCatalog((prev) => !prev)}
               aria-label="Toggle SIMBAD Known Celestial Sources"
-              title="Toggle Detected Celestial Sources Overlay (Hover red circles for labels)"
+              title="SIMBAD reference positions; epoch unspecified, motion not applied, image matches unverified"
               className="flex items-center space-x-1 text-[10px] uppercase tracking-wider text-[#888E9B] hover:text-white cursor-pointer"
             >
               <span
@@ -1015,7 +979,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
             </button>}
 
             <select
-              aria-label="Detected Sources Limit"
+              aria-label="Catalog reference limit"
               value={showCatalog ? String(catalogLimit) : 'off'}
               onChange={(e) => {
                 const val = e.target.value;
@@ -1033,9 +997,9 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
               }`}
             >
               <option value="off">Hidden</option>
-              <option value="10">Top 10</option>
-              <option value="25">Top 25</option>
-              <option value="50">All (50)</option>
+              <option value="10">First 10</option>
+              <option value="25">First 25</option>
+              <option value="50">First 50</option>
             </select>
 
             {showCatalog && (loading || loadingCatalog) && (
@@ -1127,7 +1091,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
       {minimal && loading && (
         <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-30 select-none">
           <span className="bg-[#0B0D11] border border-[#1C2029] px-3 py-1.5 rounded text-[11px] font-mono text-[#888E9B]">
-            Loading FITS stamp ({Math.round(progress)}%)...
+            Loading FITS stamp…
           </span>
         </div>
       )}
@@ -1287,6 +1251,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
       )}
 
       {/* Selected Star Inspector Pill (Click any red circle in FITS image -> Analyze Wavelengths) */}
+      {showCatalog && catalogError && <p role="alert" className="absolute top-14 left-3 text-xs text-text-secondary">{catalogError}</p>}
       {!minimal && !loading && !loadingCatalog && selectedSource && (
         <div
           onMouseDown={(e) => e.stopPropagation()}
@@ -1304,6 +1269,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
                   {selectedSource.object_type}
                 </span>
               </div>
+              <div className="text-[10px] text-[#888E9B]">Catalog position · epoch unspecified · image match unverified</div>
               <div className="text-[10px] font-mono text-[#888E9B] tabular-nums">
                 {(() => {
                   const { raStr, decStr } = formatCelestialCoordinates(selectedSource.ra_deg, selectedSource.dec_deg);
@@ -1322,7 +1288,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
                 type="button"
                 onClick={() => onAnalyzeSourceWavelengths(selectedSource)}
                 className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/50 rounded-lg text-[11px] font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0"
-                title="Open 102-channel wavelength spectrum for this selected star"
+                title="Open measured wavelength samples for this catalog position"
               >
                 <ExternalLink size={12} />
                 <span>Analyze Wavelengths</span>
@@ -1390,12 +1356,12 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
                   strokeLinecap="round"
                   fill="transparent"
                   strokeDasharray="213.63"
-                  strokeDashoffset={213.63 * (1 - progress / 100)}
+                  strokeDashoffset={160}
                   className="transition-[stroke-dashoffset] duration-300 ease-out"
                 />
               </svg>
               <div className="absolute inset-0 flex items-center justify-center font-mono text-[15px] font-bold text-white tabular-nums">
-                {Math.round(progress)}%
+                …
               </div>
             </div>
 
@@ -1430,11 +1396,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
             {/* Bottom: Active Progress & Status Bar with Elapsed Time */}
             <div className="w-full pt-2 border-t border-border-subtle/60 flex items-center justify-between text-[10px] text-text-tertiary tabular-nums shrink-0">
               <span className="truncate pr-2">
-                {progress < 30
-                  ? 'Querying NASA SPHEREx observation catalog...'
-                  : progress < 70
-                  ? 'Streaming calibrated Level 2 spectral exposure...'
-                  : 'Applying spatial Cutout2D and WCS registration...'}
+                Loading selected archive image…
               </span>
               <span className="shrink-0 text-text-secondary font-mono">{elapsedSeconds}s</span>
             </div>

@@ -4,6 +4,7 @@ from typing import Literal
 
 import astropy.units as u
 import numpy as np
+from astropy.coordinates import SkyCoord
 from astropy.visualization import LogStretch, ZScaleInterval
 
 from app.schemas.cutout import CutoutResponse
@@ -68,6 +69,13 @@ def image_cutout(
                 else:
                     # A constant field has no contrast range; preserve the true limits.
                     display[valid] = 0.5
+            yy, xx = np.indices(image.shape)
+            sky_ra, sky_dec = observation.spatial_wcs.pixel_to_world_values(xx, yy)
+            north = SkyCoord(ra * u.deg, dec * u.deg).directional_offset_by(
+                0 * u.deg, 1 * u.arcsec
+            )
+            nx, ny = observation.spatial_wcs.world_to_pixel(north)
+            north_angle = float(np.degrees(np.arctan2(nx - target_x, -(ny - target_y))))
             flag_header = observation.hdus["FLAGS"].header
             definitions = {
                 key: str(value)
@@ -94,6 +102,14 @@ def image_cutout(
                 target_y=target_y,
                 wavelength_um=wave,
                 channel_width_um=band,
+                wcs={
+                    "ra_grid": _json_values(sky_ra),
+                    "dec_grid": _json_values(sky_dec),
+                    "has_valid_wcs": bool(np.isfinite(north_angle)),
+                    "north_angle_deg": north_angle
+                    if np.isfinite(north_angle)
+                    else None,
+                },
                 spatial_wcs_header=observation.spatial_wcs.to_header(
                     relax=True
                 ).tostring(sep="\n", endcard=True, padding=False),

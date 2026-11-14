@@ -32,7 +32,7 @@ export interface SPHERExObservation {
   date_only: string;
   wavelength_min_um: number;
   wavelength_max_um: number;
-  wavelength_center_um: number;
+  wavelength_center_um: number | null;
   exptime_sec: number | null;
   access_url: string;
 }
@@ -45,7 +45,8 @@ export interface ObservationsResponse {
   detectors_available: string[];
   observations: SPHERExObservation[];
   provenance: string;
-  status: 'success' | 'no_coverage' | 'error';
+  status: 'success' | 'partial' | 'no_coverage' | 'error';
+  truncated?: boolean;
   message: string | null;
 }
 
@@ -60,6 +61,9 @@ export interface WcsMetadata {
   cunit2: string | null;
   north_angle_deg?: number | null;
   has_valid_wcs?: boolean;
+  ra_grid?: number[];
+  dec_grid?: number[];
+  spatial_wcs_header?: string;
 }
 
 export interface CutoutResponse {
@@ -67,6 +71,9 @@ export interface CutoutResponse {
   height: int;
   pixels: number[];
   raw_flux?: number[];
+  valid_pixels?: boolean[];
+  wavelength_um?: number;
+  channel_width_um?: number;
   bunit?: string;
   min_flux_mjy_sr: number;
   max_flux_mjy_sr: number;
@@ -84,7 +91,17 @@ type int = number;
 // API Base URL configured via environment variable (empty string for same-origin reverse-proxy in production)
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '/backend').replace(/\/+$/, '');
 
-function normalizeRa(ra: number): number { return ((ra % 360) + 360) % 360; }
+function normalizeRa(ra: number): number {
+  if (!Number.isFinite(ra) || ra < 0 || ra >= 360) throw new Error('Right ascension must be between 0 and 360 degrees.');
+  return ra;
+}
+// Nominal SPHEREx sampling is 6.2 arcsec/pixel; the service returns its actual dimensions.
+export const angularSize = (pixels = 200, maximum = .5) => Math.min(maximum, pixels * 6.2 / 3600);
+async function readResponse(response: Response, label: string) {
+  const data = await response.json();
+  if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `${label} (${response.status})`);
+  return data;
+}
 
 function legacyTarget(result: Awaited<ReturnType<typeof checkedResolve>>): ResolvedTarget {
   return {
@@ -112,7 +129,7 @@ export async function fetchObservations(
     throw new Error(`Failed to query SPHEREx TAP archive: ${response.statusText}`);
   }
   const data = await response.json();
-  if (!(Array.isArray(data.observations) && data.observations.every((item: { wavelength_center_um?: unknown }) => typeof item.wavelength_center_um === 'number'))) throw new Error('This view uses a different data format. Its backend connection is still being migrated.');
+  if (!Array.isArray(data.observations)) throw new Error('The archive returned an invalid observation list.');
   return data;
 }
 
@@ -129,16 +146,22 @@ export async function fetchCutout(
   if (stretch) params.append('stretch', stretch);
   if (ra !== undefined && ra !== null) params.append('ra', normalizeRa(ra).toString());
   if (dec !== undefined && dec !== null) params.append('dec', dec.toString());
-  if (size !== undefined && size !== null) params.append('size', size.toString());
+  if (size !== undefined && size !== null) params.append('size_deg', angularSize(size).toString());
 
   const url = `${API_BASE_URL}/api/cutout?${params.toString()}`;
   const response = await fetch(url, { signal });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch FITS cutout: ${response.statusText}`);
-  }
-  const data = await response.json();
-  if (!(Array.isArray(data.raw_flux) && data.wcs && typeof data.bunit === 'string')) throw new Error('This view uses a different data format. Its backend connection is still being migrated.');
-  return data;
+  const data = await readResponse(response, 'Image unavailable');
+  if (data.status !== 'success') throw new Error(data.message || 'No usable image pixels.');
+  const count = data.width * data.height;
+  if (![data.pixels, data.raw_flux, data.valid_pixels].every(a => Array.isArray(a) && a.length === count)) throw new Error('Incomplete image arrays.');
+  return {
+    ...data,
+    pixels: data.pixels.map((v: number | null, i: number) => data.valid_pixels[i] && v !== null ? v : NaN),
+    raw_flux: data.raw_flux.map((v: number | null) => v ?? NaN),
+    wcs: { crval1: null, crval2: null, crpix1: null, crpix2: null, cdelt1: null, cdelt2: null,
+      cunit1: 'deg', cunit2: 'deg', ...data.wcs, spatial_wcs_header: data.spatial_wcs_header },
+    source: data.source_url,
+  };
 }
 
 export interface EpochMetadata {
@@ -197,20 +220,19 @@ export interface CompareResponse {
 }
 
 export async function compareObservations(req: CompareRequest, signal?: AbortSignal): Promise<CompareResponse> {
-  const url = `${API_BASE_URL}/api/compare`;
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(req),
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(`Temporal comparison request failed: ${response.statusText}`);
-  }
-  return response.json();
+  if (req.ra_deg === undefined || req.dec_deg === undefined) throw new Error('Target coordinates are required.');
+  const sequence = await compareSequence({ epochs: [req.epoch_a, req.epoch_b], ra_deg: req.ra_deg, dec_deg: req.dec_deg,
+    size_px: req.size_px ?? 200, stretch: req.stretch ?? 'zscale' }, signal);
+  return { ...sequence, epoch_a: sequence.frames[0].epoch, epoch_b: sequence.frames[1].epoch,
+    pixels_a: sequence.frames[0].pixels, pixels_b: sequence.frames[1].pixels, pixels_diff: [], metrics: null, wcs: null,
+    wavelength_diff_percent: Math.abs(sequence.frames[0].wavelength_um - sequence.frames[1].wavelength_um) / sequence.frames[0].wavelength_um * 100,
+    wavelength_a_um: sequence.frames[0].wavelength_um, wavelength_b_um: sequence.frames[1].wavelength_um,
+    bandwidth_a_um: sequence.frames[0].bandwidth_um, bandwidth_b_um: sequence.frames[1].bandwidth_um };
+
 }
 
 export interface MatchObservation extends SPHERExObservation {
+  wavelength_center_um: number;
   local_wavelength_um: number;
   local_bandwidth_um: number;
 }
@@ -247,11 +269,29 @@ export interface MatchRequest {
   retry_failed?: boolean;
 }
 export async function findComparisonMatches(req: MatchRequest, signal?: AbortSignal): Promise<MatchResponse> {
-  const response = await fetch(`${API_BASE_URL}/api/compare/matches`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req), signal,
-  });
-  if (!response.ok) throw new Error(`Matching search failed: ${response.statusText}`);
-  return response.json();
+  const body = { ra: normalizeRa(req.ra_deg), dec: req.dec_deg, from_date: req.from_date || undefined,
+    to_date: req.to_date || undefined, candidate_limit: 24, advance: !!req.advance || !!req.retry_failed, retry_failed: !!req.retry_failed };
+  const started = await readResponse(await fetch(`${API_BASE_URL}/api/compare/matches/jobs`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
+  }), 'Matching search unavailable');
+  const jobUrl = `${API_BASE_URL}/api/compare/matches/jobs/${encodeURIComponent(started.job_id)}`;
+  let complete = false;
+  try {
+    for (let attempt = 0; attempt < 300; attempt++) {
+      signal?.throwIfAborted();
+      const job = await readResponse(await fetch(jobUrl, { signal }), 'Matching search unavailable');
+      if (job.status === 'completed') { complete = true; return adaptMatches(job.result); }
+      if (['failed', 'cancelled', 'expired'].includes(job.status)) throw new Error(job.error === 'archive_unavailable' ? 'The archive is unavailable. Try again or narrow the date range.' : job.error === 'invalid_metadata' ? 'The archive returned unusable observation metadata.' : `Matching search ${job.status}. Please retry.`);
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => { clearTimeout(timer); reject(signal?.reason); };
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, 500);
+        signal?.addEventListener('abort', abort, { once: true });
+      });
+    }
+    throw new Error('Matching search timed out. Try a smaller date range.');
+  } finally {
+    if (!complete) void fetch(`${jobUrl}/cancel`, { method: 'POST' }).catch(() => {});
+  }
 }
 
 export interface SequenceRequest {
@@ -281,11 +321,26 @@ export interface SequenceResponse {
 }
 
 export async function compareSequence(req: SequenceRequest, signal?: AbortSignal): Promise<SequenceResponse> {
+  const epochs = [...req.epochs].sort((a, b) => Date.parse(a.utc_date) - Date.parse(b.utc_date));
   const response = await fetch(`${API_BASE_URL}/api/compare/sequence`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req), signal,
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_urls: epochs.map(e => e.access_url), ra: normalizeRa(req.ra_deg), dec: req.dec_deg,
+      size_deg: angularSize(req.size_px, .25), stretch: req.stretch }), signal,
   });
-  if (!response.ok) throw new Error(`Comparison preparation failed: ${response.statusText}`);
-  return response.json();
+  const data = await readResponse(response, 'Comparison preparation failed');
+  if (data.status !== 'ready' || !data.blink_ready) throw new Error(data.message || 'These observations cannot be blinked safely.');
+  if (data.frames.length !== epochs.length) throw new Error('Incomplete registered sequence.');
+  return { ...data, status: 'success', wavelength_match: data.target_wavelength_match,
+    valid_fraction: data.matched_fraction, provenance: 'NASA/IPAC IRSA; full SIP WCS registration',
+    frames: data.frames.map((frame: { epoch_index: number; pixels: (number | null)[] }, i: number) => {
+      const e: ArchiveEpoch = data.epochs[frame.epoch_index];
+      if (frame.epoch_index !== i || e.access_url !== epochs[i].access_url || e.obs_id !== epochs[i].obs_id || e.detector !== epochs[i].detector) throw new Error('Returned image does not match the selected observation.');
+      return { epoch: { ...epochs[i], utc_date: e.utc_date }, pixels: frame.pixels.map((p, k) => {
+        if (p === null && data.valid_mask[k]) throw new Error('Missing usable comparison pixel.');
+        return p ?? 0; // Display filler is excluded by the explicit valid mask.
+      }), wavelength_um: e.target_wavelength_um, bandwidth_um: e.target_bandwidth_um };
+    }) };
+
 }
 
 export interface SpectralFeature {
@@ -298,6 +353,8 @@ export interface SpectralFeature {
 type str = string;
 
 export interface SpectralPoint {
+  obs_id?: string;
+  utc_date?: string;
   channel_index: number;
   detector: string;
   wavelength_um: number;
@@ -346,9 +403,23 @@ export async function fetchTargetSpectrum(
   if (!response.ok) {
     throw new Error(`Failed to extract spectral profile: ${response.statusText}`);
   }
-  const data = await response.json();
-  if (!(Array.isArray(data.spectral_points) && Array.isArray(data.spectral_features) && Array.isArray(data.detector_bands))) throw new Error('This view uses a different data format. Its backend connection is still being migrated.');
-  return data;
+  const data = await readResponse(response, 'Spectral samples unavailable');
+  if (!Array.isArray(data.spectral_points)) throw new Error('Invalid spectral samples.');
+  if (!data.spectral_points.length) throw new Error(data.message || 'No usable spectral samples for this position.');
+  const points = [...data.spectral_points].sort((a, b) => a.wavelength_um - b.wavelength_um)
+    .map((p, channel_index) => ({ ...p, channel_index, snr: p.snr ?? NaN }));
+  const detectors: string[] = [...new Set<string>(points.map(p => p.detector))];
+  return { ...data, target_name: targetName, ra_deg: data.ra_deg ?? ra, dec_deg: data.dec_deg ?? dec,
+    spectral_points: points, total_channels: points.length, spectral_features: [],
+    detector_bands: detectors.map(detector => {
+      const samples = points.filter(p => p.detector === detector);
+      return { detector, label: detector, wavelength_min_um: Math.min(...samples.map(p => p.wavelength_um - p.bandwidth_um / 2)),
+        wavelength_max_um: Math.max(...samples.map(p => p.wavelength_um + p.bandwidth_um / 2)),
+        resolving_power_nominal: samples.reduce((n, p) => n + p.resolving_power, 0) / samples.length,
+        channel_count: samples.length, primary_science: 'Measured nearest-pixel samples; not a continuous spectrum' };
+    }), mean_flux_mjy_sr: points.reduce((n, p) => n + p.flux_mjy_sr, 0) / points.length,
+    peak_flux_mjy_sr: Math.max(...points.map(p => p.flux_mjy_sr)),
+  };
 }
 
 export interface CatalogSource {
@@ -387,28 +458,66 @@ export async function fetchCatalogSources(
   accessUrl?: string,
   wcs?: WcsMetadata
 ): Promise<CatalogSourcesResponse> {
-  const params = new URLSearchParams({
-    ra: normalizeRa(ra).toString(),
-    dec: dec.toString(),
-    radius_arcmin: radiusArcmin.toString(),
-    width: width.toString(),
-    height: height.toString(),
-  });
-  if (targetName) params.append('target_name', targetName);
-  if (accessUrl) params.append('access_url', accessUrl);
-  if (wcs) {
-    if (wcs.crval1 != null) params.append('crval1', wcs.crval1.toString());
-    if (wcs.crval2 != null) params.append('crval2', wcs.crval2.toString());
-    if (wcs.crpix1 != null) params.append('crpix1', wcs.crpix1.toString());
-    if (wcs.crpix2 != null) params.append('crpix2', wcs.crpix2.toString());
-    if (wcs.cdelt1 != null) params.append('cdelt1', wcs.cdelt1.toString());
-    if (wcs.cdelt2 != null) params.append('cdelt2', wcs.cdelt2.toString());
-  }
+  // Images use the full SIP header returned with their exact cutout, not approximate CDELT math.
+  void width; void height; void targetName; void accessUrl;
+  const params = new URLSearchParams({ ra: String(normalizeRa(ra)), dec: String(dec), radius_arcmin: String(radiusArcmin), limit: '200' });
+  const data = await readResponse(await fetch(`${API_BASE_URL}/api/catalog/sources?${params}`), 'Catalog unavailable');
+  if (!wcs?.spatial_wcs_header) throw new Error('This image has no full WCS for catalog projection.');
+  const projection = await readResponse(await fetch(`${API_BASE_URL}/api/catalog/project`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spatial_wcs_header: wcs.spatial_wcs_header,
+      positions: data.sources.map((s: CatalogSource) => ({ ra: s.ra_deg, dec: s.dec_deg })) }),
+  }), 'Catalog projection unavailable');
+  return { ...data, status: data.status === 'partial' ? 'success' : data.status,
+    sources: data.sources.flatMap((s: CatalogSource, i: number) => projection.pixels[i] ? [{ ...s,
+      pixel_x: projection.pixels[i][0], pixel_y: projection.pixels[i][1],
+      mag_v: null, mag_g: null, mag_k: null, brightness_rank: 0 }] : []) };
 
-  const url = `${API_BASE_URL}/api/catalog/sources?${params.toString()}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch catalog sources: ${response.statusText}`);
-  }
-  return response.json();
+}
+
+interface ArchiveEpoch { obs_id: string; detector: string; utc_date: string; mjd_start: number; access_url: string; target_wavelength_um: number; target_bandwidth_um: number }
+interface ArchiveMatches {
+  status: string; message: string; candidate_count: number; checked_count: number; failed_count: number; pending_count: number;
+  metadata_truncated: boolean; metadata_rejected_count: number; pairs_truncated: boolean; search_complete: boolean; can_continue: boolean;
+  checks: { artifact_id: string; status: string; epoch: ArchiveEpoch | null }[];
+  pairs: { artifact_id_a: string; artifact_id_b: string; detector: string; baseline_days: number }[];
+}
+export function adaptMatches(data: ArchiveMatches): MatchResponse {
+  const verified = new Map(data.checks.filter(c => c.status === 'verified' && c.epoch).map(c => [c.artifact_id, c.epoch!]));
+  const edge = (a: string, b: string) => data.pairs.some(p => (p.artifact_id_a === a && p.artifact_id_b === b) || (p.artifact_id_b === a && p.artifact_id_a === b));
+  const seen = new Set<string>();
+  const groups: MatchGroup[] = data.pairs.flatMap(pair => {
+    const ids = [pair.artifact_id_a, pair.artifact_id_b];
+    // Every pair must be explicitly verified; transitive wavelength chains are unsafe.
+    for (const [id, e] of verified) {
+      if (ids.length >= 4) break;
+      if (!ids.includes(id) && e.detector === pair.detector && ids.every(other => edge(id, other))) ids.push(id);
+    }
+    const identity = [...ids].sort().join('|');
+    if (seen.has(identity)) return [];
+    seen.add(identity);
+    const epochs = ids.map(id => verified.get(id));
+    if (epochs.some(e => !e)) throw new Error('Missing verified matching epochs.');
+    const observations: MatchObservation[] = epochs.map(value => {
+      const e = value!;
+      return { ...e, date_only: e.utc_date.slice(0, 10), band_name: e.detector,
+        wavelength_min_um: e.target_wavelength_um - e.target_bandwidth_um / 2,
+        wavelength_max_um: e.target_wavelength_um + e.target_bandwidth_um / 2,
+        wavelength_center_um: e.target_wavelength_um, local_wavelength_um: e.target_wavelength_um,
+        local_bandwidth_um: e.target_bandwidth_um, exptime_sec: null };
+    }).sort((a, b) => a.mjd_start - b.mjd_start);
+    // URL-safe stable identity from the actual pair, never from the array index.
+    let h = 2166136261, j = 5381;
+    for (const c of identity) { h = Math.imul(h ^ c.charCodeAt(0), 16777619); j = Math.imul(j, 33) ^ c.charCodeAt(0); }
+    const id = `${pair.detector}-${(h >>> 0).toString(16).padStart(8, '0')}${(j >>> 0).toString(16).padStart(8, '0')}`;
+    return [{ id, detector: pair.detector, wavelength_um: observations[0].local_wavelength_um,
+      observations, recommended_ids: observations.map(o => o.obs_id), baseline_days: observations[observations.length - 1].mjd_start - observations[0].mjd_start }];
+  }).slice(0, 24);
+  const limited = data.metadata_truncated || data.metadata_rejected_count > 0 || data.pairs_truncated || data.pairs.length > 24;
+  return { status: data.status === 'partial' ? 'partial' : 'success', message: data.message, groups,
+    candidates: data.candidate_count, checked: data.checked_count,
+    failed: data.failed_count, pending: data.pending_count, metadata_complete: !data.metadata_truncated && !data.metadata_rejected_count,
+    complete: data.search_complete && !limited && !data.failed_count && !data.pending_count,
+    can_continue: data.can_continue || data.failed_count > 0, auto_continue: data.can_continue && data.status !== 'partial', limited,
+    provenance: 'NASA/IPAC IRSA; target-position wavelength checks only' };
 }

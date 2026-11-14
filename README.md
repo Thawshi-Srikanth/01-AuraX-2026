@@ -23,8 +23,9 @@ This repository is being built progressively, starting with the backend.
 
 The frontend has been restored by copying the existing application's UI files,
 styles, view components, local assets, dependency manifest, and lockfile.
-Backend connections are still being migrated separately; copied screens do not
-imply that every scientific workflow is integrated yet.
+The copied frontend connects to the new resolver, observations, calibrated images,
+measured spectral samples, catalog projection, and background comparison jobs.
+Archive availability and scientific compatibility still determine which data can be shown.
 
 ## Run the backend
 
@@ -68,12 +69,19 @@ example starting position, without hard-coded proper motion or catalog verificat
 The existing map's reference overlays are not queried exposure coverage; its
 coordinate launch uses the backend rather than inventing fallback metadata.
 
-The original image and wavelength screens expect older response formats. API
-boundary guards report an integration error for incompatible responses rather
-than inventing values or allowing the copied renderers to misinterpret data.
-Observation/image/spectral adapters remain separate migration tasks. The copied
-view files and guide text describe the original app and are not a claim that all
-of those backend connections are ready in this repository.
+Image requests use `size_deg`; controls show angular fields of view and returned
+image dimensions remain authoritative. Unknown metadata wavelengths remain unknown.
+Images retain physical brightness, quality masks, and full SIP coordinates from
+Astropy. `/api/catalog/project` maps reference positions through that exact header;
+a projected marker is not a verified image detection or a motion-corrected position.
+
+Wavelengths shows only measured nearest-pixel samples and their variance errors.
+Samples may span dates; no continuous spectrum, identified features, or missing
+channels are inferred. Comparison searches poll resumable background jobs and
+cancel outstanding jobs when leaving the search. Candidate groups require every
+pair to be verified; only a ready registered sequence can blink. Difference images
+and motion measurements remain unavailable. Fresh saved collections start empty;
+existing browser-saved targets are preserved.
 
 Verify from `frontend/`:
 
@@ -705,7 +713,7 @@ locally on Python 3.12 and in GitHub checks on Python 3.11 and 3.12. The existin
 also pass. A live one-day D3 date-search query still timed out after the configured
 45-second metadata read timeout and returned HTTP 503. The full live date-search
 workflow remains unverified; a timeout is not evidence of missing sky coverage.
-The frontend has not yet been migrated, and scientific subtraction and motion
+The frontend UI is copied and adapted; scientific subtraction and motion
 measurement are not provided by this backend.
 
 

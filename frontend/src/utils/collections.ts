@@ -16,83 +16,7 @@ export interface SavedTargetItem {
 
 const STORAGE_KEY = 'aurax_saved_collections_v1';
 
-const DEFAULT_SAVED_TARGETS: SavedTargetItem[] = [
-  {
-    id: 'barnards-star',
-    target: {
-      query: "Barnard's Star",
-      canonical_name: "NAME Barnard's star",
-      object_type: 'High proper-motion Star',
-      coordinates: {
-        ra_deg: 269.45208,
-        dec_deg: 4.69339,
-        ra_hms: '17h 57m 48.50s',
-        dec_dms: '+04° 41\' 36.2"',
-        frame: 'ICRS',
-        epoch: 'J2000',
-      },
-      proper_motion: {
-        pm_ra_mas_yr: -802.8,
-        pm_dec_mas_yr: 10362.5,
-      },
-      aliases: ['GJ 699', 'HIP 87937'],
-      provenance: 'CDS / SIMBAD Astronomical Database',
-    },
-    savedAt: '2025-05-15T06:40:00Z',
-    notes: 'M4V red dwarf in Ophiuchus (10.39"/yr proper motion). Primary SPHEREx astrometric benchmark.',
-    detector: 'D1',
-    wavelengthUm: 0.99,
-  },
-  {
-    id: 'm101-pinwheel',
-    target: {
-      query: 'M101',
-      canonical_name: 'M 101 (Pinwheel Galaxy)',
-      object_type: 'Face-on Spiral Galaxy',
-      coordinates: {
-        ra_deg: 210.80227,
-        dec_deg: 54.34895,
-        ra_hms: '14h 03m 12.54s',
-        dec_dms: '+54° 20\' 56.2"',
-        frame: 'ICRS',
-        epoch: 'J2000',
-      },
-      proper_motion: null,
-      aliases: ['NGC 5457', 'UGC 8981'],
-      provenance: 'CDS / SIMBAD Astronomical Database',
-    },
-    savedAt: '2025-05-14T18:20:00Z',
-    notes: 'Strong 3.30 µm PAH aromatic dust emission across spiral arm H II regions in Detector D4.',
-    detector: 'D4',
-    wavelengthUm: 3.3,
-  },
-  {
-    id: 'wise-0855',
-    target: {
-      query: 'WISE 0855-0714',
-      canonical_name: 'WISE J085510.83-071442.5',
-      object_type: 'Y4 Sub-Brown Dwarf',
-      coordinates: {
-        ra_deg: 133.7951,
-        dec_deg: -7.2451,
-        ra_hms: '08h 55m 10.82s',
-        dec_dms: '-07° 14\' 42.4"',
-        frame: 'ICRS',
-        epoch: 'J2000',
-      },
-      proper_motion: {
-        pm_ra_mas_yr: -8118.0,
-        pm_dec_mas_yr: 680.0,
-      },
-      aliases: ['WISE 0855'],
-      provenance: 'CDS / SIMBAD Astronomical Database',
-    },
-    savedAt: '2025-05-12T11:05:00Z',
-    notes: '250 K sub-brown dwarf; deep H2O and CH4 absorption bands across D4–D6 (3.0–5.0 µm).',
-    detector: 'D5',
-    wavelengthUm: 4.27,
-  },
-];
+const DEFAULT_SAVED_TARGETS: SavedTargetItem[] = [];
 
 export function getTargetKey(target: ResolvedTarget): string {
   const name = (target.canonical_name || target.query || 'target')
@@ -222,12 +146,12 @@ function sanitizeFilename(name: string): string {
 
 export function exportSpectrumCsv(spectrum: SpectrumResponse) {
   const header = [
-    '# SPHEREx 102-Channel Calibrated Spectrophotometry (Level 2 Surface Brightness)',
+    '# SPHEREx Observed nearest-pixel samples (MJy/sr; dates may differ)',
     `# Target: ${spectrum.target_name}`,
     `# RA_deg: ${spectrum.ra_deg.toFixed(6)}`,
     `# Dec_deg: ${spectrum.dec_deg.toFixed(6)}`,
     `# Provenance: ${spectrum.provenance}`,
-    'channel_index,detector,wavelength_um,bandwidth_um,resolving_power,flux_mjy_sr,flux_error_mjy_sr,snr',
+    'sample_index,detector,wavelength_um,bandwidth_um,resolving_power,flux_mjy_sr,flux_error_mjy_sr,snr',
   ];
 
   const rows = spectrum.spectral_points.map((pt) =>
@@ -239,13 +163,13 @@ export function exportSpectrumCsv(spectrum: SpectrumResponse) {
       pt.resolving_power.toFixed(1),
       pt.flux_mjy_sr.toFixed(4),
       pt.flux_error_mjy_sr.toFixed(4),
-      pt.snr.toFixed(1),
+      (Number.isFinite(pt.snr) ? pt.snr.toFixed(1) : ''),
     ].join(',')
   );
 
   const csv = [...header, ...rows].join('\n');
   triggerFileDownload(
-    `${sanitizeFilename(spectrum.target_name)}_spherex_102ch_sed.csv`,
+    `${sanitizeFilename(spectrum.target_name)}_spherex_samples.csv`,
     csv,
     'text/csv;charset=utf-8'
   );
@@ -253,7 +177,7 @@ export function exportSpectrumCsv(spectrum: SpectrumResponse) {
 
 export function exportSpectrumIpac(spectrum: SpectrumResponse) {
   const lines: string[] = [
-    `\\catalog = 'SPHEREx Level 2 102-Channel LVF Spectrophotometry'`,
+    `\\catalog = 'SPHEREx Level 2 observed nearest-pixel samples'`,
     `\\target  = '${spectrum.target_name.replace(/'/g, '')}'`,
     `\\ra_deg  = ${spectrum.ra_deg.toFixed(6)}`,
     `\\dec_deg = ${spectrum.dec_deg.toFixed(6)}`,
@@ -272,7 +196,7 @@ export function exportSpectrumIpac(spectrum: SpectrumResponse) {
     const res = pt.resolving_power.toFixed(1).padStart(15, ' ');
     const flx = pt.flux_mjy_sr.toFixed(4).padStart(12, ' ');
     const err = pt.flux_error_mjy_sr.toFixed(4).padStart(12, ' ');
-    const snr = pt.snr.toFixed(1).padStart(8, ' ');
+    const snr = (Number.isFinite(pt.snr) ? pt.snr.toFixed(1) : '').padStart(8, ' ');
     lines.push(` ${ch} ${det} ${wl} ${bw} ${res} ${flx} ${err} ${snr} `);
   }
 
@@ -287,19 +211,19 @@ export function exportSpectrumVOTable(spectrum: SpectrumResponse) {
   const rowsXml = spectrum.spectral_points
     .map(
       (pt) =>
-        `        <TR><TD>${pt.channel_index + 1}</TD><TD>${pt.detector}</TD><TD>${pt.wavelength_um.toFixed(4)}</TD><TD>${pt.bandwidth_um.toFixed(4)}</TD><TD>${pt.resolving_power.toFixed(1)}</TD><TD>${pt.flux_mjy_sr.toFixed(4)}</TD><TD>${pt.flux_error_mjy_sr.toFixed(4)}</TD><TD>${pt.snr.toFixed(1)}</TD></TR>`
+        `        <TR><TD>${pt.channel_index + 1}</TD><TD>${pt.detector}</TD><TD>${pt.wavelength_um.toFixed(4)}</TD><TD>${pt.bandwidth_um.toFixed(4)}</TD><TD>${pt.resolving_power.toFixed(1)}</TD><TD>${pt.flux_mjy_sr.toFixed(4)}</TD><TD>${pt.flux_error_mjy_sr.toFixed(4)}</TD><TD>${(Number.isFinite(pt.snr) ? pt.snr.toFixed(1) : '')}</TD></TR>`
     )
     .join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <VOTABLE version="1.4" xmlns="http://www.ivoa.net/xml/VOTable/v1.3">
-  <RESOURCE name="SPHEREx_102Ch_Spectrum">
-    <DESCRIPTION>SPHEREx Calibrated 102-Channel LVF Spectrophotometry for ${spectrum.target_name}</DESCRIPTION>
+  <RESOURCE name="SPHEREx_Observed_Samples">
+    <DESCRIPTION>SPHEREx observed nearest-pixel samples for ${spectrum.target_name}</DESCRIPTION>
     <PARAM name="Target" datatype="char" arraysize="*" value="${spectrum.target_name}"/>
     <PARAM name="RA" unit="deg" datatype="double" value="${spectrum.ra_deg.toFixed(6)}"/>
     <PARAM name="Dec" unit="deg" datatype="double" value="${spectrum.dec_deg.toFixed(6)}"/>
-    <TABLE name="SED_102_Channels">
-      <FIELD name="channel" datatype="int"/>
+    <TABLE name="Observed_Samples">
+      <FIELD name="sample" datatype="int"/>
       <FIELD name="detector" datatype="char" arraysize="2"/>
       <FIELD name="wavelength_um" unit="um" datatype="double"/>
       <FIELD name="bandwidth_um" unit="um" datatype="double"/>

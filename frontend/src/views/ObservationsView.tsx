@@ -65,18 +65,18 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
     return () => { cancelled = true; };
   }, [targetKey, target.coordinates.ra_deg, target.coordinates.dec_deg, catalogRetry]);
 
-  const observations = useMemo(() => data?.status === 'success'
+  const observations = useMemo(() => (data?.status === 'success' || data?.status === 'partial')
     ? [...data.observations].sort((a, b) => a.mjd_start - b.mjd_start) : [], [data]);
   const timeFiltered = useMemo(() => {
     if (!range.fromDate && !range.toDate && range.fromTime === '00:00' && range.toTime === '23:59') return observations;
     const from = (range.fromDate || data?.distinct_dates[0] || '1970-01-01') + ' ' + range.fromTime + ':00';
     const to = (range.toDate || data?.distinct_dates[data.distinct_dates.length - 1] || '2099-12-31') + ' ' + range.toTime + ':59.999';
-    return observations.filter(observation => observation.utc_date >= from && observation.utc_date <= to);
+    return observations.filter(observation => Date.parse(observation.utc_date) >= Date.parse(from.replace(' ', 'T') + 'Z') && Date.parse(observation.utc_date) <= Date.parse(to.replace(' ', 'T') + 'Z'));
   }, [observations, range, data]);
   const active = useMemo(() => selectedDetector === 'All' ? timeFiltered
     : timeFiltered.filter(observation => observation.detector === selectedDetector), [timeFiltered, selectedDetector]);
   const matchingSelection = selection.key === targetKey ? active.find(observation => matchesObservation(observation, selection.id)) : undefined;
-  const selectionUnavailable = data?.status === 'success' && selection.key === targetKey && !!selection.id && !matchingSelection;
+  const selectionUnavailable = (data?.status === 'success' || data?.status === 'partial') && selection.key === targetKey && !!selection.id && !matchingSelection;
   const selected = selectionUnavailable ? null : matchingSelection || active[0] || null;
   useEffect(() => {
     if (!selected) return;
@@ -114,7 +114,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
     setCatalog(null);
     setCatalogRetry(value => value + 1);
   }
-  const isFilteredEmpty = data?.status === 'success' && observations.length > 0 && active.length === 0;
+  const isFilteredEmpty = (data?.status === 'success' || data?.status === 'partial') && observations.length > 0 && active.length === 0;
   const playbackReason = 'Playback requires validated wavelength matching and sky alignment. Browse individual observations with the arrows.';
   const emptyTitle = loadingCatalog ? 'Finding observations'
     : data?.status === 'error' ? 'Archive unavailable'
@@ -163,7 +163,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
               {active.length === 0 && <p className="images-panel-note">{loadingCatalog ? 'Checking archive coverage…' : 'No observations in this selection.'}</p>}
             </div>
           </section>
-          {data?.status === 'success' && observations.length >= 100 && <p className="images-archive-limit">Showing up to 100 oldest archive results.</p>}
+          {(data?.status === 'success' || data?.status === 'partial') && data.truncated && <p className="images-archive-limit">Archive results are limited. More observations may exist.</p>}
         </aside>
         <div className="images-stage">
           <div ref={setToolbarHost} className="images-toolbar-host" />
@@ -189,7 +189,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
             {panel === 'Details' && <>
               <h2>Sky position</h2>
               <dl><dt>Right ascension</dt><dd>{target.coordinates.ra_deg.toFixed(6)}°</dd><dt>Declination</dt><dd>{target.coordinates.dec_deg.toFixed(6)}°</dd><dt>Frame</dt><dd>{target.coordinates.frame}</dd></dl>
-              {frame ? <><h2>Displayed image</h2><dl><dt>Detector</dt><dd><span className="images-current-detector"><i style={{ backgroundColor: DETECTOR_COLORS[frame.observation.detector] }} aria-hidden="true" />{frame.observation.detector}</span></dd><dt>Detector wavelength range</dt><dd>{frame.observation.wavelength_min_um}–{frame.observation.wavelength_max_um} µm</dd><dt>Wavelength at target</dt><dd>Not calculated</dd><dt>Exposure</dt><dd>{frame.observation.exptime_sec != null ? frame.observation.exptime_sec + ' s' : 'Not provided'}</dd><dt>Image dimensions</dt><dd>{frame.cutout.width} × {frame.cutout.height} px</dd><dt>Brightness unit</dt><dd>{frame.cutout.bunit}</dd></dl></> : <p className="images-panel-note">Image details appear only after the selected image loads.</p>}
+              {frame ? <><h2>Displayed image</h2><dl><dt>Detector</dt><dd><span className="images-current-detector"><i style={{ backgroundColor: DETECTOR_COLORS[frame.observation.detector] }} aria-hidden="true" />{frame.observation.detector}</span></dd><dt>Detector wavelength range</dt><dd>{frame.observation.wavelength_min_um}–{frame.observation.wavelength_max_um} µm</dd><dt>Wavelength at target</dt><dd>{frame.cutout.wavelength_um?.toFixed(4) ?? 'Unavailable'} µm (WCS-WAVE)</dd><dt>Exposure</dt><dd>{frame.observation.exptime_sec != null ? frame.observation.exptime_sec + ' s' : 'Not provided'}</dd><dt>Image dimensions</dt><dd>{frame.cutout.width} × {frame.cutout.height} px</dd><dt>Brightness unit</dt><dd>{frame.cutout.bunit}</dd></dl></> : <p className="images-panel-note">Image details appear only after the selected image loads.</p>}
               <div className="images-detail-actions">
                 <button type="button" onClick={() => setSaved(toggleSaveTarget(target, undefined, frame?.observation.detector).saved)}><Bookmark size={14} aria-hidden="true" />{saved ? 'Saved target' : 'Save target'}</button>
                 <button type="button" disabled={!frame} onClick={() => { if (frame) exportCutoutJson(target, frame.cutout, frame.observation); }}><Download size={14} aria-hidden="true" />Export JSON</button>
@@ -198,7 +198,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
             {panel === 'Provenance' && <>
               <h2>Archive</h2><p>{data?.provenance || 'No archive result loaded.'}</p>
               <p className="images-panel-note">Archive results and images may be cached. The retrieved list is not a guarantee of all available observations.</p>
-              {observations.length >= 100 && <p className="images-panel-note">The query returns up to 100 exposures, ordered oldest first. Later observations may not be included.</p>}
+              {data?.truncated && <p className="images-panel-note">The query returns up to 100 exposures, ordered oldest first. Later observations may not be included.</p>}
               {frame ? <><h2>Displayed observation</h2><p className="images-observation-id">{frame.observation.obs_id}</p><p>{frame.cutout.source}</p>{frame.observation.access_url.startsWith('https://') && <a href={frame.observation.access_url} target="_blank" rel="noreferrer">Open archive image link ↗</a>}</> : <p className="images-panel-note">No image provenance is shown until an observation loads.</p>}
             </>}
           </div>

@@ -212,3 +212,29 @@ def test_default_runtime_cache_location(monkeypatch, tmp_path):
         assert (
             client.app.state.fits_store.directory == configured_default.parent / "fits"
         )
+
+
+def test_sip_coordinate_grid_and_catalog_projection_roundtrip(client):
+    data = client.get("/api/cutout", params=PARAMS).json()
+    index = 2 * data["width"] + 13
+    response = client.post(
+        "/api/catalog/project",
+        json={
+            "spatial_wcs_header": data["spatial_wcs_header"],
+            "positions": [
+                {
+                    "ra": data["wcs"]["ra_grid"][index],
+                    "dec": data["wcs"]["dec_grid"][index],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["pixels"][0] == pytest.approx([13, 2], abs=1e-5)
+    assert response.json()["image_match_verified"] is False
+    assert data["wcs"]["has_valid_wcs"] is True
+    assert -180 <= data["wcs"]["north_angle_deg"] <= 180
+    bad = client.post(
+        "/api/catalog/project", json={"spatial_wcs_header": "invalid", "positions": []}
+    )
+    assert bad.status_code == 422

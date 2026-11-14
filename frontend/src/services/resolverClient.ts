@@ -4,7 +4,7 @@ export interface Health {
   version: string;
 }
 
-const apiBase = (import.meta.env.VITE_API_BASE_URL || '/backend').replace(/\/+$/, '');
+const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '/backend').replace(/\/+$/, '');
 
 export async function fetchHealth(signal?: AbortSignal): Promise<Health> {
   const response = await fetch(`${apiBase}/health`, {

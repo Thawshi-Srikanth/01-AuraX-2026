@@ -112,6 +112,7 @@ def test_app_initializes_cache_only_on_startup(monkeypatch, tmp_path):
             "/api/cutout",
             "/api/spectrum",
             "/api/catalog/sources",
+            "/api/catalog/project",
             "/api/compare",
             "/api/compare/matches",
             "/api/compare/matches/jobs",
