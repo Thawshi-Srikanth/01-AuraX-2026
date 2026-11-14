@@ -43,7 +43,7 @@ jobs:
           python-version: ${{ matrix.python }}
           working-directory: backend
           enable-cache: true
-          cache-dependency-glob: backend/uv.lock
+          cache-dependency-glob: uv.lock
       - name: Install locked dependencies
         run: uv sync --locked
       - name: Check code
