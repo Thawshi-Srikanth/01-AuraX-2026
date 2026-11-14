@@ -566,3 +566,17 @@ uv run --locked ruff format --check .
 ```
 
 Tests run without astronomy archive access or downloaded observation data.
+
+
+The [Backend checks workflow](https://github.com/Thawshi-Srikanth/01-AuraX-2026/actions/workflows/backend.yml)
+runs locked dependency installation, code checks, formatting checks, and the test
+suite on Python 3.11 and 3.12 for backend pushes and pull requests. It can also be
+started manually. These checks do not establish live archive availability.
+
+As of the 2026-11-14 local release check, locked installation and all 341 backend
+tests pass on Python 3.12. The existing real cached-file image/sequence/job checks
+also pass. A live one-day D3 date-search query still timed out after the configured
+45-second metadata read timeout and returned HTTP 503. The full live date-search
+workflow remains unverified; a timeout is not evidence of missing sky coverage.
+The frontend has not yet been migrated, and scientific subtraction and motion
+measurement are not provided by this backend.
