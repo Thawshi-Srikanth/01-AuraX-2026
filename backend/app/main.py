@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.db.cache import CacheManager
+from app.routers.observations import router as observations_router
 from app.routers.resolve import router as resolve_router
 
 VERSION = "0.1.0"
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     )
 
     application.include_router(resolve_router)
+    application.include_router(observations_router)
 
     @application.get("/health", response_model=HealthResponse, tags=["Health"])
     async def health() -> HealthResponse:

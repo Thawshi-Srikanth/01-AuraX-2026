@@ -7,12 +7,12 @@ This repository is being built progressively, starting with the backend.
 
 - A minimal FastAPI backend with a health endpoint.
 - Real SIMBAD name resolution and manual ICRS coordinate validation.
+- Bounded SPHEREx Level 2 observation metadata search through IRSA.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-Observation search, image processing, spectra, comparisons, and the frontend
-have not been migrated yet.
+Image processing, spectra, comparisons, and the frontend have not been migrated yet.
 
 ## Run the backend
 
@@ -66,6 +66,38 @@ service failures 503, and unusable catalog data 502. Invalid/mixed inputs return
 Network requests use a 5-second connect timeout and 15-second read-inactivity
 timeout per endpoint; these are not a total request deadline. Archive work runs in a worker
 thread so it does not block the API event loop.
+
+## Find observations
+
+```sh
+curl 'http://127.0.0.1:8000/api/observations?ra=269.4520769586187&dec=4.693364966576667&limit=10'
+```
+
+Supply ICRS RA/Dec in degrees. `limit` defaults to 100 and accepts 1–500.
+The query follows [IRSA's plane/artifact search example](https://caltech-ipac.github.io/irsa-tutorials/spherex-cutouts/).
+It returns covering Level 2 image-product metadata ordered by start time and
+artifact identity. Products from different processing versions remain distinct;
+`artifact_id` identifies an archive product, while `obs_id` alone is not unique.
+
+Timestamps are converted from UTC MJD with Astropy. Detector wavelength bounds
+are converted from metres to micrometres. `wavelength_center_um` remains null:
+the wavelength at the requested target requires FITS calibration, and cannot be
+inferred from the detector range. Product URLs are not downloaded or checked for
+availability by this metadata search. They are not cutout URLs yet.
+
+`total_count` counts returned records, not all matching archive products.
+`truncated` indicates more results or archive-side overflow. This first version
+returns only the earliest bounded subset; paging and date filtering are not
+included. A valid empty result returns `no_coverage` for this public-product query.
+Unusable rows produce `partial` with `rejected_count`, including when all rows
+are unusable. Archive failures return HTTP 503; invalid response schemas return
+502. Neither is reported as no coverage.
+
+Successful metadata responses are cached for one hour, keyed by exact query
+coordinates and limit. Empty and partial responses are not cached. Responses
+include retrieval time, source, and cache status. Network requests have a 5-second
+connect timeout and 30-second read-inactivity timeout, not a total deadline.
+No image downloads or background jobs run when searching.
 
 ## Local cache
 
