@@ -528,9 +528,27 @@ export function adaptMatches(data: ArchiveMatches): MatchResponse {
 }
 
 
-export async function fetchCachedSample(accessUrl: string, centerRa: number, centerDec: number, size: number, ra: number, dec: number, signal: AbortSignal): Promise<{ sample: Omit<SpectralPoint, 'channel_index' | 'detector'> | null; source_url: string; status: string }> {
-  return readResponse(await fetch(`${API_BASE_URL}/api/spectrum/cached`, {
+export interface RegionAnalysis {
+  status: 'success' | 'partial' | 'insufficient_data'; summary: string;
+  ra_deg: number; dec_deg: number; pixel_x: number; pixel_y: number;
+  radius_px: number; background_inner_px: number; background_outer_px: number;
+  usable_pixels: number; masked_pixels: number; aperture_coverage: number;
+  background_coverage: number; background_clipped_pixels: number; wavelength_rejected_pixels: number;
+  wavelength_um: number; bandwidth_um: number; source_url: string;
+  method: string; uncertainty: string; caveats: string[];
+  measurements: { mean_brightness_mjy_sr: number; background_mjy_sr: number;
+    excess_mjy_sr: number; excess_error_mjy_sr: number; usable_aperture_flux_mjy: number;
+    flux_error_mjy: number; snr: number | null; solid_angle_sr: number } | null;
+}
+export interface RegionCatalogRecord { id: string; name: string; object_type: string; object_type_label: string | null; ra_deg: number; dec_deg: number; distance_arcsec: number; coordinate_reference: string | null }
+export interface RegionCatalog { sources: RegionCatalogRecord[]; truncated: boolean; provenance: string; source_url: string; retrieved_at: string; caveat: string; coordinate_epoch: string | null }
+export async function fetchRegionAnalysis(accessUrl: string, centerRa: number, centerDec: number, size: number, ra: number, dec: number, signal: AbortSignal): Promise<RegionAnalysis> {
+  return readResponse(await fetch(`${API_BASE_URL}/api/region`, {
     method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ access_url: accessUrl, center_ra: centerRa, center_dec: centerDec, size_deg: angularSize(size), ra, dec }),
-  }), 'Cached sample unavailable');
+  }), 'Region measurement unavailable');
+}
+export async function fetchRegionCatalog(ra: number, dec: number, signal: AbortSignal): Promise<RegionCatalog> {
+  const params = new URLSearchParams({ ra: String(normalizeRa(ra)), dec: String(dec), radius_arcmin: '1', limit: '20' });
+  return readResponse(await fetch(`${API_BASE_URL}/api/catalog/sources?${params}`, { signal }), 'Catalog context unavailable');
 }

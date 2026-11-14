@@ -1,15 +1,16 @@
 import type { CutoutResponse } from '../services/api';
 
-export interface WavelengthPosition { ra: number; dec: number; label: string }
+export interface SkyPosition { ra: number; dec: number; label: string }
+export interface ImageSelection extends SkyPosition { x: number; y: number }
 
 // The grids come from Astropy's full SIP WCS, in the same row order as the image.
-export function imagePosition(cutout: CutoutResponse, x: number, y: number): WavelengthPosition | null {
+export function imagePosition(cutout: CutoutResponse, x: number, y: number): ImageSelection | null {
   const ix = Math.floor(x), iy = Math.floor(y);
   if (ix < 0 || iy < 0 || ix >= cutout.width || iy >= cutout.height) return null;
   const index = iy * cutout.width + ix;
   const ra = cutout.wcs.ra_grid?.[index], dec = cutout.wcs.dec_grid?.[index];
   if (typeof ra !== 'number' || typeof dec !== 'number' || !Number.isFinite(ra) || !Number.isFinite(dec) || ra < 0 || ra >= 360 || Math.abs(dec) > 90) return null;
-  return { ra, dec, label: 'Image position' };
+  return { ra, dec, x: ix, y: iy, label: 'Image position' };
 }
 
 export function canvasPixel(mouseX: number, mouseY: number, width: number, height: number, imageWidth: number, imageHeight: number, zoom: number, panX: number, panY: number, rotation: number) {

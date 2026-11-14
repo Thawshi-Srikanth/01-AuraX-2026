@@ -104,13 +104,23 @@ The displayed date and locally calibrated wavelength belong to the displayed ima
 These individual exposures may have different passbands and sky grids; brightness
 changes alone do not establish variability or motion.
 
-Wavelengths opens as a wide strip above the Images timeline. It plots measured
-nearest-pixel brightness and variance errors over a fixed 0.75–5 µm axis, leaving
-gaps empty. The first sample comes from the displayed image's exact cached FITS
-file, using full SIP WCS and that pixel's wavelength calibration. No extra archive
-request starts automatically. Use “Load more samples” to request bounded additional
-observations while the first measurement remains visible. First-time image downloads
-still depend on archive response times. Comparison searches poll resumable background jobs and
+Click a region inside a loaded FITS image to open the floating Region inspector.
+It shows a magnified image detail, an exact three-pixel-radius aperture, a local
+background annulus, usable-area flux and formal variance uncertainty. It reuses
+the displayed cached FITS without an additional archive download. Background
+outliers are sigma-clipped; both region and annulus must retain at least 80%
+coverage after quality and local-passband screening. Pixel solid angles use full
+SIP WCS corners. No missing flux, PSF-wing correction or correlated-noise correction
+is inferred. A signed signal-to-formal-error ratio describes this image, not a
+confirmed astronomical detection.
+
+Nearby SIMBAD reference records load separately and remain unverified possible
+associations. They are not motion-propagated or confirmed image matches; shared
+catalog coordinates do not imply separately resolved sources. The inspector does
+not infer an emission spectrum or source type from a single exposure. Selecting a
+target loads images without automatically opening wavelength analysis.
+
+Comparison searches poll resumable background jobs and
 cancel outstanding jobs when leaving the search. Candidate groups require every
 pair to be verified; only a ready registered sequence can blink. Difference images
 and motion measurements remain unavailable. Fresh saved collections start empty;

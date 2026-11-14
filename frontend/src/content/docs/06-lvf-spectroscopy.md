@@ -10,11 +10,11 @@ The filter does not bend incoming light into a rainbow. Each position transmits 
 
 ## Read wavelength at the target
 
-Select a target or click a position in an image to open the Wavelengths strip above
-the timeline. The Images toolbar can reopen it. The first measurement uses the
-displayed image’s cached file. “Load more samples” requests additional observations.
-The full 0.75–5 µm axis shows measured points with variance error bars; gaps remain
-unmeasured. Measurements on different dates do not form a simultaneous spectrum.
+Click a region inside a loaded FITS image to open the Region inspector. Its local
+brightness and background estimate use quality-screened pixels within half the
+narrower local passband of the selected point. Insufficient comparable region or
+background coverage remains inconclusive. The passband in measurement details
+describes the observation; it is not an identified emission line.
 
 An exposure contains both spatial and spectral information. Each useful sample has a sky position and a wavelength response. A detector label or an exposure-wide wavelength midpoint is not a substitute for the calibrated wavelength at the target pixel.
 

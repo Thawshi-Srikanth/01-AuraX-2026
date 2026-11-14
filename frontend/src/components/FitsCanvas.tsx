@@ -12,11 +12,9 @@ import {
   Sparkles,
   HelpCircle,
   Radio,
-  ExternalLink,
-  X,
 } from 'lucide-react';
 import { CutoutResponse, CatalogSource, fetchCatalogSources } from '../services/api';
-import { canvasPixel, imagePosition, type WavelengthPosition } from '../utils/wavelengthPosition';
+import { canvasPixel, imagePosition, type ImageSelection } from '../utils/imageSelection';
 
 export interface AperturePhotometryMetrics {
   targetRadiusPx: number;
@@ -43,8 +41,8 @@ interface FitsCanvasProps {
   accessUrl?: string;
   cutoutSize?: number;
   onCutoutSizeChange?: (size: number) => void;
-  onWavelengthPosition?: (position: WavelengthPosition) => void;
-  onAnalyzeSourceWavelengths?: (source: CatalogSource) => void;
+  onInspectRegion?: (position: ImageSelection) => void;
+  inspectedRegion?: ImageSelection | null;
   showAperture?: boolean;
   targetRadiusPx?: number;
   skyInnerRadiusPx?: number;
@@ -183,8 +181,8 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
   accessUrl,
   cutoutSize,
   onCutoutSizeChange,
-  onAnalyzeSourceWavelengths,
-  onWavelengthPosition,
+  onInspectRegion,
+  inspectedRegion,
   showAperture = false,
   targetRadiusPx = 4,
   skyInnerRadiusPx = 7,
@@ -359,6 +357,18 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     }
     ctx.drawImage(offscreen, -destW / 2, -destH / 2, destW, destH);
 
+    if (inspectedRegion) {
+      const px = -destW / 2 + (inspectedRegion.x + .5) * zoom;
+      const py = -destH / 2 + (inspectedRegion.y + .5) * zoom;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1.5;
+      for (const radius of [3, 5, 8]) {
+        ctx.setLineDash(radius === 3 ? [] : [3, 3]);
+        ctx.beginPath(); ctx.arc(px, py, radius * zoom, 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
+
     // Interactive Aperture Photometry Overlay (Zero Overhead Canvas Rendering)
     if (showAperture) {
       const rAperCanvas = targetRadiusPx * zoom;
@@ -489,7 +499,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     }
 
     ctx.restore();
-  }, [cutout, loading, loadingCatalog, transform, rotation, showAperture, targetRadiusPx, skyInnerRadiusPx, skyOuterRadiusPx, showCatalog, catalogSources, catalogLimit, hoveredSource, selectedSource]);
+  }, [cutout, loading, loadingCatalog, transform, rotation, showAperture, targetRadiusPx, skyInnerRadiusPx, skyOuterRadiusPx, showCatalog, catalogSources, catalogLimit, hoveredSource, selectedSource, inspectedRegion]);
 
   // Fit without changing the image aspect ratio; hosted controls occupy separate space.
   const fitToViewport = useCallback(() => {
@@ -521,7 +531,10 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     });
   }, []);
 
-  // Colorize FITS pixel array into cached offscreen canvas ONLY on cutout or colormap change
+  const drawRef = useRef(drawToScreen);
+  useEffect(() => { drawRef.current = drawToScreen; }, [drawToScreen]);
+
+  // Colorize FITS pixels only when image data or colormap changes, not on pan or picks.
   useEffect(() => {
     if (!cutout || cutout.status === 'error' || cutout.width === 0 || cutout.height === 0) {
       cachedOffscreenRef.current = null;
@@ -556,8 +569,8 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
 
     offCtx.putImageData(imgData, 0, 0);
     cachedOffscreenRef.current = offscreen;
-    drawToScreen();
-  }, [cutout, colormap, drawToScreen]);
+    drawRef.current();
+  }, [cutout, colormap]);
 
   // Auto-fit observation on initial mount, when astronomical target changes, or when cutout FOV size changes
   // Preserves user's custom zoom level, pan coordinates, and celestial rotation across timeline & spectral transitions
@@ -827,12 +840,8 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     const found = showCatalog && !loadingCatalog ? catalogSources.slice(0, catalogLimit)
       .find(source => Math.hypot(x - source.pixel_x, y - source.pixel_y) * zoom < 16) : undefined;
     setSelectedSource(found || null);
-    if (found && onAnalyzeSourceWavelengths) {
-      onAnalyzeSourceWavelengths(found);
-      return;
-    }
     const position = imagePosition(cutout, x, y);
-    if (position) onWavelengthPosition?.(position);
+    if (position) onInspectRegion?.(position);
   };
 
   // Exact cursor-anchored wheel zoom
@@ -1221,62 +1230,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
       </div>
       )}
 
-      {/* Selected Star Inspector Pill (Click any red circle in FITS image -> Analyze Wavelengths) */}
       {showCatalog && catalogError && <p role="alert" className="absolute top-14 left-3 text-xs text-text-secondary">{catalogError}</p>}
-      {!minimal && !loading && !loadingCatalog && selectedSource && (
-        <div
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-[#0B0D11]/95 border border-[#1C2029] rounded-xl px-3.5 py-2 shadow-2xl backdrop-blur-md flex items-center space-x-3 text-[11px] select-none"
-        >
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-red-500/30 shrink-0" />
-            <div className="flex flex-col">
-              <div className="flex items-center space-x-1.5">
-                <span className="text-white font-semibold truncate max-w-[180px]">
-                  {selectedSource.name}
-                </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#12151C] border border-[#1C2029] text-[#888E9B]">
-                  {selectedSource.object_type}
-                </span>
-              </div>
-              <div className="text-[10px] text-[#888E9B]">Catalog position · epoch unspecified · image match unverified</div>
-              <div className="text-[10px] font-mono text-[#888E9B] tabular-nums">
-                {(() => {
-                  const { raStr, decStr } = formatCelestialCoordinates(selectedSource.ra_deg, selectedSource.dec_deg);
-                  const magVal = selectedSource.mag_v ?? selectedSource.mag_g ?? selectedSource.mag_k;
-                  const magStr = magVal != null ? ` · mag ${magVal.toFixed(1)}` : '';
-                  return `${raStr} ${decStr} · px [${Math.round(selectedSource.pixel_x)}, ${Math.round(selectedSource.pixel_y)}]${magStr}`;
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {onAnalyzeSourceWavelengths && (
-            <>
-              <div className="w-px h-6 bg-[#1C2029]" />
-              <button
-                type="button"
-                onClick={() => onAnalyzeSourceWavelengths(selectedSource)}
-                className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/50 rounded-lg text-[11px] font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0"
-                title="Open measured wavelength samples for this catalog position"
-              >
-                <ExternalLink size={12} />
-                <span>Analyze Wavelengths</span>
-              </button>
-            </>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setSelectedSource(null)}
-            className="p-1 text-[#888E9B] hover:text-white rounded transition-colors cursor-pointer"
-            title="Clear selection"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      )}
 
       {/* Bottom-Right Scientific Range Readout & Optimization HUD (Hidden in Minimal Mode) */}
       {!minimal && !observationMode && cutout && cutout.width > 0 && (

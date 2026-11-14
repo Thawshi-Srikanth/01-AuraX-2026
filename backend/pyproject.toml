@@ -7,6 +7,7 @@ dependencies = [
     "astropy>=6,<9",
     "fastapi>=0.110,<1",
     "numpy>=1.26,<3",
+    "photutils>=2.3,<4",
     "pyvo>=1.5,<2",
     "reproject>=0.21,<1",
     "requests>=2.31,<3",

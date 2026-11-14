@@ -24,7 +24,7 @@ If an archive request fails, retry when the service is available. An empty cover
 
 - **Sky map:** find a region and orient yourself on the sky.
 - **Images:** inspect individual calibrated images and their metadata.
-- **Wavelengths:** explore how measurements vary with wavelength. Check coverage and uncertainties before interpreting a feature.
+- **Region inspector:** click an image region to inspect its signal, background, quality and nearby catalog records.
 - **Compare dates:** automatically find wavelength-compatible dates, then blink through two to four observations or inspect them in a linked grid.
 - **Saved targets:** return to saved selections through the navigation menu.
 

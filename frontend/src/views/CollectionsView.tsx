@@ -267,14 +267,6 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleOpenInTab(activeItem, 'Wavelengths')}
-                    className="px-3 py-1.5 text-[#888E9B] hover:text-white hover:bg-[#12151C] transition-colors cursor-pointer flex items-center space-x-1"
-                  >
-                    <span>Wavelengths</span>
-                    <ArrowUpRight size={11} />
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => handleOpenInTab(activeItem, 'Compare')}
                     className="px-3 py-1.5 text-[#888E9B] hover:text-white hover:bg-[#12151C] transition-colors cursor-pointer flex items-center space-x-1"
                   >
@@ -374,64 +366,6 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                 </div>
               </div>
             </div>
-
-            {/* 3. Measured spectral samples */}
-            {spectrum && (
-              <div className="px-8 py-6 border-b border-[#1C2029]">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-[11px] uppercase tracking-wider text-[#888E9B]">
-                    Wavelengths (0.75 – 5.00 µm)
-                  </span>
-                  <div className="flex items-center space-x-3 text-[10px] font-mono text-[#888E9B]">
-                    {(['D1', 'D2', 'D3', 'D4', 'D5', 'D6'] as const).map((det) => (
-                      <span key={det} className="flex items-center space-x-1">
-                        <span
-                          className="w-1.5 h-1.5 rounded-full"
-                          style={{ backgroundColor: DETECTOR_COLORS[det] }}
-                        />
-                        <span>{det}</span>
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <div
-                  onClick={() => handleOpenInTab(activeItem, 'Wavelengths')}
-                  className="h-36 w-full cursor-pointer group"
-                  title="Click to open measured wavelength samples"
-                >
-                  <svg viewBox="0 0 880 120" className="w-full h-full overflow-visible">
-                    <line x1="0" y1="20" x2="880" y2="20" stroke="#1C2029" strokeWidth="0.75" />
-                    <line x1="0" y1="60" x2="880" y2="60" stroke="#1C2029" strokeWidth="0.75" />
-                    <line x1="0" y1="100" x2="880" y2="100" stroke="#1C2029" strokeWidth="0.75" />
-                    {(() => {
-                      const pts = spectrum.spectral_points;
-                      if (pts.length === 0) return null;
-                      const fluxes = pts.map((p) => p.flux_mjy_sr);
-                      const low = Math.min(...fluxes), high = Math.max(...fluxes);
-                      const pad = Math.max((high - low) * .1, Math.abs(low) * .05, .001);
-                      const minF = low - pad, maxF = high + pad;
-                      const getX = (w: number) => 8 + ((w - 0.75) / (5.0 - 0.75)) * 864;
-                      const getY = (f: number) =>
-                        102 - ((f - minF) / Math.max(0.01, maxF - minF)) * 84;
-                      return (
-                        <>
-                          {pts.map((p) => (
-                            <circle
-                              key={p.channel_index}
-                              cx={getX(p.wavelength_um)}
-                              cy={getY(p.flux_mjy_sr)}
-                              r="2"
-                              fill={DETECTOR_COLORS[p.detector] || '#FFFFFF'}
-                            />
-                          ))}
-                        </>
-                      );
-                    })()}
-                  </svg>
-                </div>
-              </div>
-            )}
 
             {/* 4. Flush Apple-Notes Style Notes Area (Auto-Saves) */}
             <div className="px-8 py-6 flex-1 flex flex-col">
