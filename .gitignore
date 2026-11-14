@@ -1,0 +1,47 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python environments and generated files
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Frontend dependencies and generated files
+node_modules/
+*.tsbuildinfo
+
+# Runtime astronomy data and caches
+cache/
+cutouts/
+downloads/
+*.fits
+*.fits.gz
+*.sqlite*
+*.db
+
+# Local planning and agent files
+AGENTS.md
+BACKLOG.md
+PROGRESS.md
+docs/BACKLOG.md
+docs/PROGRESS.md
+.agents/
+.codex/
+
+# Editor and operating system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*:Zone.Identifier

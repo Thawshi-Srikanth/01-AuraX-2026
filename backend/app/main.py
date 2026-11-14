@@ -1,0 +1,68 @@
+"""Application entry point, with no archive requests during startup."""
+
+import os
+from urllib.parse import urlsplit
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+
+VERSION = "0.1.0"
+DEFAULT_ORIGINS = "http://localhost:5173,http://127.0.0.1:5173"
+
+
+class HealthResponse(BaseModel):
+    status: str
+    service: str
+    version: str
+
+
+def allowed_origins() -> list[str]:
+    origins = []
+    for value in os.getenv("CORS_ORIGINS", DEFAULT_ORIGINS).split(","):
+        origin = value.strip()
+        if not origin:
+            continue
+        parsed = urlsplit(origin)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+            or "*" in origin
+        ):
+            raise ValueError("CORS_ORIGINS must contain HTTP(S) origins only")
+        try:
+            parsed.port
+        except ValueError as error:
+            raise ValueError("Invalid port in CORS_ORIGINS") from error
+        if origin not in origins:
+            origins.append(origin)
+    return origins
+
+
+def create_app() -> FastAPI:
+    application = FastAPI(
+        title="AURAx API",
+        description="Scientific API for SPHEREx observations.",
+        version=VERSION,
+    )
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins(),
+        allow_credentials=False,
+        allow_methods=["GET"],
+        allow_headers=["Accept", "Content-Type"],
+    )
+
+    @application.get("/health", response_model=HealthResponse, tags=["Health"])
+    async def health() -> HealthResponse:
+        return HealthResponse(status="healthy", service="AURAx API", version=VERSION)
+
+    return application
+
+
+app = create_app()

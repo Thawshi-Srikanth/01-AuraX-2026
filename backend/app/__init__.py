@@ -1,0 +1,1 @@
+"""AURAx backend application."""

@@ -1,0 +1,29 @@
+[project]
+name = "aurax-backend"
+version = "0.1.0"
+description = "AURAx scientific API"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.28,<1",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.27,<1",
+    "pytest>=8,<10",
+    "ruff>=0.9,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
