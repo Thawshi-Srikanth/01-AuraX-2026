@@ -97,7 +97,10 @@ Images retain physical brightness, quality masks, and full SIP coordinates from
 Astropy. `/api/catalog/project` maps reference positions through that exact header;
 a projected marker is not a verified image detection or a motion-corrected position.
 
-Wavelengths shows only measured nearest-pixel samples and their variance errors.
+Wavelengths opens as a right-side sheet when a target or image position is selected.
+It shows measured nearest-pixel samples and their variance errors, without a separate
+image viewer. Recent position results are reused for five minutes; changing selection
+cancels stale requests. First-time archive retrieval can still take time.
 Samples may span dates; no continuous spectrum, identified features, or missing
 channels are inferred. Comparison searches poll resumable background jobs and
 cancel outstanding jobs when leaving the search. Candidate groups require every

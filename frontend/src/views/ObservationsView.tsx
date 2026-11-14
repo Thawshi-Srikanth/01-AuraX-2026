@@ -9,12 +9,14 @@ import { isTargetSaved, toggleSaveTarget, exportCutoutJson } from '../utils/coll
 import { createFrameLoader, displayedFrame, FrameRequest, FrameState, frameRequestKey } from '../utils/observationFrames';
 import { matchesObservation } from '../utils/navigation';
 import { useRetainedState } from '../utils/AnalysisContext';
+import type { WavelengthPosition } from '../utils/wavelengthPosition';
 import './observations.css';
 
 interface ObservationsViewProps {
   target: ResolvedTarget;
   onNavigate: (tab: NavigationTab) => void;
   onTargetResolved?: (target: ResolvedTarget) => void;
+  onWavelengthPosition?: (position: WavelengthPosition) => void;
   initialDetector?: string;
   onDetectorChange?: (det: string) => void;
 }
@@ -24,7 +26,7 @@ type Panel = typeof PANELS[number];
 const observationId = (observation: SPHERExObservation) => JSON.stringify([observation.obs_id, observation.detector, observation.access_url]);
 const utcLabel = (value: string) => value.replace('T', ' ').replace(/Z$/, '') + ' UTC';
 
-export function ObservationsView({ target, onNavigate, initialDetector, onDetectorChange }: ObservationsViewProps) {
+export function ObservationsView({ target, onNavigate, initialDetector, onDetectorChange, onWavelengthPosition }: ObservationsViewProps) {
   const targetKey = JSON.stringify([target.coordinates.ra_deg, target.coordinates.dec_deg]);
   const [catalog, setCatalog] = useState<{ key: string; response: ObservationsResponse } | null>(null);
   const [catalogRetry, setCatalogRetry] = useState(0);
@@ -128,6 +130,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
     <section className="images-root" aria-label="Images">
       <header className="images-heading">
         <div><h1>Images</h1><p role="status">{frame ? utcLabel(frame.observation.utc_date) : loadingImage ? 'Loading selected observation…' : 'No image displayed'}</p>{frame && <span className="images-current-detector"><i style={{ backgroundColor: DETECTOR_COLORS[frame.observation.detector] }} aria-hidden="true" />{frame.observation.detector}</span>}</div>
+        <button type="button" className="images-panel-toggle" onClick={() => onWavelengthPosition?.({ ra: target.coordinates.ra_deg, dec: target.coordinates.dec_deg, label: target.canonical_name || target.query })}>Wavelengths</button>
         <button type="button" className="images-panel-toggle" aria-label={panelOpen ? 'Hide details' : 'Show details'} onClick={() => setPanelOpen(open => !open)} aria-expanded={panelOpen} aria-controls="image-information">{panelOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}<span>{panelOpen ? 'Hide details' : 'Show details'}</span></button>
       </header>
       <div className="images-workspace">
@@ -175,7 +178,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
               {isFilteredEmpty && <button type="button" onClick={resetFilters}>Reset filters</button>}
               {data?.status === 'no_coverage' && <button type="button" onClick={() => onNavigate('Home')}>Choose another position</button>}
             </div> : imageError ? <div className="images-empty" role="alert"><h2>Selected image unavailable</h2><p>{imageError}</p><button type="button" onClick={retryImage}>Retry image</button><p>Or choose another observation from the list.</p></div>
-              : <FitsCanvas cutout={frame?.cutout || null} loading={loadingImage} selectedStretch={stretch} onStretchChange={setStretch} onRetry={retryImage} targetId={targetKey} targetName={target.canonical_name || target.query} targetRa={target.coordinates.ra_deg} targetDec={target.coordinates.dec_deg} accessUrl={frame?.observation.access_url} cutoutSize={size} onCutoutSizeChange={setSize} observationMode toolbarHost={toolbarHost} />}
+              : <FitsCanvas cutout={frame?.cutout || null} loading={loadingImage} selectedStretch={stretch} onStretchChange={setStretch} onRetry={retryImage} targetId={targetKey} targetName={target.canonical_name || target.query} targetRa={target.coordinates.ra_deg} targetDec={target.coordinates.dec_deg} accessUrl={frame?.observation.access_url} cutoutSize={size} onCutoutSizeChange={setSize} observationMode toolbarHost={toolbarHost} onWavelengthPosition={onWavelengthPosition} onAnalyzeSourceWavelengths={source => onWavelengthPosition?.({ ra: source.ra_deg, dec: source.dec_deg, label: source.name })} />}
           </div>
         </div>
         {panelOpen && <aside id="image-information" className="images-information" aria-label="Observation details">

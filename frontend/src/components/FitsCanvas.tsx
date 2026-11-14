@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { CutoutResponse, CatalogSource, fetchCatalogSources } from '../services/api';
+import { canvasPixel, imagePosition, type WavelengthPosition } from '../utils/wavelengthPosition';
 
 export interface AperturePhotometryMetrics {
   targetRadiusPx: number;
@@ -42,6 +43,7 @@ interface FitsCanvasProps {
   accessUrl?: string;
   cutoutSize?: number;
   onCutoutSizeChange?: (size: number) => void;
+  onWavelengthPosition?: (position: WavelengthPosition) => void;
   onAnalyzeSourceWavelengths?: (source: CatalogSource) => void;
   showAperture?: boolean;
   targetRadiusPx?: number;
@@ -182,6 +184,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
   cutoutSize,
   onCutoutSizeChange,
   onAnalyzeSourceWavelengths,
+  onWavelengthPosition,
   showAperture = false,
   targetRadiusPx = 4,
   skyInnerRadiusPx = 7,
@@ -812,56 +815,24 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
 
   const handleMouseUp = () => setIsDragging(false);
 
-  // Click on a red-circled star in the FITS image to select it for Wavelengths analysis
+  // Picking a position does not replace the displayed image or its target.
   const handleCanvasClick = (e: React.MouseEvent) => {
-    if (minimal || hasDraggedRef.current) return;
-    if (!showCatalog || loading || loadingCatalog || catalogSources.length === 0 || !cutout || cutout.width === 0) {
-      return;
-    }
-
-    if (hoveredSource) {
-      setSelectedSource(hoveredSource);
-      return;
-    }
-
+    if (e.target !== canvasRef.current || minimal || hasDraggedRef.current || loading || !cutout) return;
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
     const { zoom, panX, panY } = transformRef.current;
-    const currentRotation = rotationRef.current;
-    const destW = cutout.width * zoom;
-    const destH = cutout.height * zoom;
-    const centerX = rect.width / 2 + panX;
-    const centerY = rect.height / 2 + panY;
-
-    let unrotX = mouseX - centerX;
-    let unrotY = mouseY - centerY;
-    if (currentRotation !== 0) {
-      const rad = (-currentRotation * Math.PI) / 180;
-      const cosR = Math.cos(rad);
-      const sinR = Math.sin(rad);
-      const rx = unrotX * cosR - unrotY * sinR;
-      const ry = unrotX * sinR + unrotY * cosR;
-      unrotX = rx;
-      unrotY = ry;
+    const { x, y } = canvasPixel(e.clientX - rect.left, e.clientY - rect.top,
+      rect.width, rect.height, cutout.width, cutout.height, zoom, panX, panY, rotationRef.current);
+    const found = showCatalog && !loadingCatalog ? catalogSources.slice(0, catalogLimit)
+      .find(source => Math.hypot(x - source.pixel_x, y - source.pixel_y) * zoom < 16) : undefined;
+    setSelectedSource(found || null);
+    if (found && onAnalyzeSourceWavelengths) {
+      onAnalyzeSourceWavelengths(found);
+      return;
     }
-
-    const imgX = (unrotX + destW / 2) / zoom;
-    const imgY = (unrotY + destH / 2) / zoom;
-
-    const visible = catalogSources.slice(0, catalogLimit);
-    let found: CatalogSource | null = null;
-    for (const s of visible) {
-      const dPx = Math.hypot(imgX - s.pixel_x, imgY - s.pixel_y);
-      if (dPx * zoom < 16) {
-        found = s;
-        break;
-      }
-    }
-    setSelectedSource(found);
+    const position = imagePosition(cutout, x, y);
+    if (position) onWavelengthPosition?.(position);
   };
 
   // Exact cursor-anchored wheel zoom
