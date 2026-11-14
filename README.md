@@ -159,6 +159,26 @@ positions without a flat-sky approximation. Each record includes its canonical
 identifier, unmodified SIMBAD object-type code, coordinates, angular separation,
 and available coordinate/proper-motion references. Missing values remain null.
 
+`object_type` preserves the original SIMBAD code. `object_type_label` comes from
+SIMBAD's `otypedef.description` table (for example, `Pl` is “Extra-solar Planet”
+and `BY*` is “BY Dra Variable”). Missing descriptions remain null; unknown codes
+are not guessed or replaced.
+
+`sources_count` counts catalog records. `distinct_positions_count` counts exact
+reported RA/Dec pairs among those records. `shared_position_groups` lists multiple
+identifiers with exactly equal reported coordinates, and each member carries a
+`position_group_id`. Every record, coordinate, reference, and proper motion is
+preserved. Groups use no angular tolerance and infer no physical association,
+host–planet hierarchy, independent astrometry, or image resolution. Nearby but
+unequal coordinates stay separate. Group membership covers returned records only,
+so a truncated result can contain an incomplete group.
+
+For example, the five returned Barnard system records can describe one shared
+reported position; this does not mean five separately detected image sources.
+The response explicitly explains the grouping and keeps `image_match_verified`
+false. The upgraded catalog cache uses a new namespace so older responses cannot
+hide the new classification or grouping fields.
+
 The endpoint records the actual SIMBAD primary/mirror service and retrieval time.
 The response marks limited results with `truncated`; `sources_count` counts only
 returned records. Bad rows produce `partial` and `rejected_count`, rather than a

@@ -1,5 +1,6 @@
 """Bounded live SIMBAD cone search, with spherical separation and provenance."""
 
+import hashlib
 import json
 import math
 from datetime import UTC, datetime
@@ -11,17 +12,22 @@ from astropy.coordinates import SkyCoord
 from pydantic import ValidationError
 
 from app.db.cache import CacheManager
-from app.schemas.catalog import CatalogSource, CatalogSourcesResponse
+from app.schemas.catalog import (
+    CatalogSource,
+    CatalogSourcesResponse,
+    SharedCatalogPosition,
+)
 from app.schemas.target import ProperMotion
 from app.services.resolver import SIMBAD_URLS, TimeoutSession
 
-CACHE_NAMESPACE = "catalog:v1"
+CACHE_NAMESPACE = "catalog:v2"
 CACHE_TTL_SECONDS = 21600
 REQUIRED_COLUMNS = {
     "main_id",
     "ra",
     "dec",
     "otype",
+    "object_type_label",
     "pmra",
     "pmdec",
     "coo_bibcode",
@@ -41,12 +47,14 @@ def query_catalog(ra: float, dec: float, radius_arcmin: float, limit: int):
     bound = limit + 1
     radius_deg = radius_arcmin / 60
     query = f"""SELECT TOP {bound}
-        main_id, ra, dec, otype, pmra, pmdec, coo_bibcode, pm_bibcode,
-        DISTANCE(POINT('ICRS', ra, dec),
+        b.main_id, b.ra, b.dec, b.otype, b.pmra, b.pmdec,
+        b.coo_bibcode, b.pm_bibcode, t.description AS object_type_label,
+        DISTANCE(POINT('ICRS', b.ra, b.dec),
                  POINT('ICRS', {ra!r}, {dec!r})) AS separation_deg
-        FROM basic
+        FROM basic AS b
+        LEFT JOIN otypedef AS t ON b.otype = t.otype
         WHERE 1 = CONTAINS(
-            POINT('ICRS', ra, dec), CIRCLE('ICRS', {ra!r}, {dec!r}, {radius_deg!r})
+            POINT('ICRS', b.ra, b.dec), CIRCLE('ICRS', {ra!r}, {dec!r}, {radius_deg!r})
         )
         ORDER BY separation_deg ASC, main_id ASC"""
     last_error = None
@@ -106,12 +114,41 @@ def _source(row, center, radius_arcmin):
         id=identifier,
         name=identifier,
         object_type=_text(row, "otype") or "Astronomical Source",
+        object_type_label=_text(row, "object_type_label") or None,
         ra_deg=ra,
         dec_deg=dec,
         distance_arcsec=distance,
         coordinate_reference=_text(row, "coo_bibcode"),
         proper_motion=motion,
     )
+
+
+def group_reported_positions(sources):
+    """Group exact reported positions without inferring a physical relationship."""
+    positions = {}
+    for source in sources:
+        source.position_group_id = None
+        # Normalize signed zero, preserving every other reported coordinate bit.
+        key = (source.ra_deg or 0.0, source.dec_deg or 0.0)
+        positions.setdefault(key, []).append(source)
+    shared = []
+    for (ra, dec), members in sorted(positions.items()):
+        if len(members) < 2:
+            continue
+        identity = json.dumps([ra, dec], separators=(",", ":"))
+        group_id = "position_" + hashlib.sha256(identity.encode()).hexdigest()
+        for member in members:
+            member.position_group_id = group_id
+        shared.append(
+            SharedCatalogPosition(
+                id=group_id,
+                ra_deg=ra,
+                dec_deg=dec,
+                member_ids=sorted(member.id for member in members),
+                records_count=len(members),
+            )
+        )
+    return len(positions), shared
 
 
 def find_catalog_sources(
@@ -161,12 +198,17 @@ def find_catalog_sources(
         except (ValueError, TypeError, KeyError, IndexError):
             rejected += 1
     sources.sort(key=lambda source: (source.distance_arcsec, source.id))
+    distinct_positions, shared_groups = group_reported_positions(sources)
     truncated = len(table) > limit or bool(table.meta.get("overflow", False))
     if rejected or (not sources and truncated):
         status, message = "partial", "Some catalog records could not be used."
     elif sources:
         status = "success"
-        message = f"Returned {len(sources)} catalog records."
+        position_word = "position" if distinct_positions == 1 else "positions"
+        message = (
+            f"Returned {len(sources)} catalog records at "
+            f"{distinct_positions} distinct reported {position_word}."
+        )
         if truncated:
             message += " More records exist; this is a limited subset."
     else:
@@ -179,6 +221,8 @@ def find_catalog_sources(
         limit=limit,
         sources_count=len(sources),
         sources=sources,
+        distinct_positions_count=distinct_positions,
+        shared_position_groups=shared_groups,
         truncated=truncated,
         rejected_count=rejected,
         status=status,

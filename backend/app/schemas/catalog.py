@@ -13,11 +13,29 @@ class CatalogSource(BaseModel):
     id: str = Field(min_length=1)
     name: str = Field(min_length=1)
     object_type: str
+    object_type_label: str | None = Field(
+        default=None,
+        description="Description from SIMBAD otypedef; null if unavailable",
+    )
+    position_group_id: str | None = None
     ra_deg: float = Field(ge=0, lt=360)
     dec_deg: float = Field(ge=-90, le=90)
     distance_arcsec: float = Field(ge=0)
     coordinate_reference: str | None = None
     proper_motion: ProperMotion | None = None
+
+
+class SharedCatalogPosition(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
+    id: str
+    ra_deg: float = Field(ge=0, lt=360)
+    dec_deg: float = Field(ge=-90, le=90)
+    member_ids: list[str]
+    records_count: int = Field(ge=2)
+    meaning: str = (
+        "Identical reported coordinates only. Physical association and image "
+        "resolution are unverified."
+    )
 
 
 class CatalogSourcesResponse(BaseModel):
@@ -30,6 +48,17 @@ class CatalogSourcesResponse(BaseModel):
         ge=0, description="Returned records, not a catalog total"
     )
     sources: list[CatalogSource]
+    distinct_positions_count: int = Field(
+        ge=0,
+        description="Exact coordinate pairs among returned records, not source count",
+    )
+    shared_position_groups: list[SharedCatalogPosition]
+    grouping_method: str = (
+        "Exact equality of reported ICRS RA/Dec; no angular tolerance"
+    )
+    grouping_scope: str = (
+        "Returned records only; groups can be incomplete when results are truncated."
+    )
     truncated: bool
     rejected_count: int = Field(ge=0)
     status: Literal["success", "no_sources", "partial"]
