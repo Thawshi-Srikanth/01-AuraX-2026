@@ -21,8 +21,8 @@ This repository is being built progressively, starting with the backend.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The frontend currently provides a branded workspace shell and a real backend
-connection check. Target search, the image viewer, and the remaining frontend
+The frontend currently provides a branded workspace shell, validated navigation
+and session restoration, and a real backend connection check. Target search, the image viewer, and the remaining frontend
 features have not yet been migrated.
 
 ## Run the backend
@@ -70,6 +70,25 @@ The Vite development proxy is not a production deployment server.
 The shell reuses `aura.svg` and defines the shared dark palette in
 `frontend/src/tokens.css`. It includes responsive layout and keyboard focus/skip
 navigation; target search and other science views are separate migration chunks.
+
+Navigation uses the original view paths: Home `/`, Explore `/sky`, Observations
+`/images`, Compare dates `/compare`, Wavelengths `/wavelengths`, Collections
+`/saved`, and Help `/docs`. Views whose tools are not migrated display an explicit
+unavailable state; route availability does not imply scientific tools are ready.
+Normal clicks use browser history, and modified clicks retain normal link behavior.
+Back/Forward restores the view and coordinates encoded in that history entry.
+
+The current tab stores only the last valid view and optional ICRS coordinates in
+`sessionStorage`, with schema versioning and bounded input validation. A bare `/`
+visit resumes this session; explicit view paths and coordinate links take priority.
+Direct links can include `?ra=...&dec=...`; both coordinates are required, checked
+against the backend's ranges, and preserve numeric precision. Coordinates are
+labelled unverified positions, never catalog matches or propagated epochs.
+No default object, observations, credentials, job records, or science arrays are
+saved. Unknown paths and malformed coordinates show an error with a Home recovery
+link. Invalid links do not overwrite the previous valid session. Missing, corrupt,
+blocked, or full session storage does not prevent navigation. A static host must
+serve `index.html` for these application paths to support direct links and reloads.
 
 Verify the frontend from `frontend/`:
 

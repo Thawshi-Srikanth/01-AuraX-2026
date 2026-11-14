@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { fetchHealth } from './services/api';
+import { views, routeUrl } from './navigation/session';
+import { useNavigation } from './navigation/useNavigation';
 
 type Connection = 'checking' | 'connected' | 'unavailable';
 const labels: Record<Connection, string> = {
@@ -9,6 +11,8 @@ const labels: Record<Connection, string> = {
 };
 
 export function App() {
+  const { route, navigate } = useNavigation();
+  const currentView = views.find((view) => view.id === route.view)!;
   const [connection, setConnection] = useState<Connection>('checking');
   const [attempt, setAttempt] = useState(0);
 
@@ -36,11 +40,17 @@ export function App() {
     <div className="app-shell">
       <a className="skip-link" href="#workspace">Skip to workspace</a>
       <header className="app-header">
-        <a className="brand" href="/" aria-label="AURAx home">
+        <a className="brand" href={routeUrl('home', route.target)} onClick={(event) => navigate(event, 'home')} aria-label="AURAx home">
           <img src="/aura.svg" alt="" width="40" height="25" />
           <span>AURAx</span>
         </a>
-        <nav aria-label="Main navigation"><a href="#workspace" aria-current="page">Workspace</a></nav>
+        <nav aria-label="Main navigation">{views.map((view) => (
+          <a key={view.id} href={routeUrl(view.id, route.target)}
+            onClick={(event) => navigate(event, view.id)}
+            aria-current={!route.error && route.view === view.id ? 'page' : undefined}>
+            {view.label}
+          </a>
+        ))}</nav>
         <div className="connection-tools">
           <p className="connection" data-state={connection} role="status" aria-live="polite">
             <span className="status-dot" aria-hidden="true" />{labels[connection]}
@@ -51,15 +61,30 @@ export function App() {
         </div>
       </header>
       <main id="workspace" tabIndex={-1}>
-        <div className="workspace-heading"><h1>Workspace</h1><span>SPHEREx observations</span></div>
+        <div className="workspace-heading"><h1>{route.error ? 'Invalid link' : currentView.label}</h1><span>SPHEREx observations</span></div>
         {connection === 'unavailable' && (
           <p className="connection-warning">The backend could not be reached. Check that it is running, then retry.</p>
         )}
+        {route.target && !route.error && (
+          <p className="target-position">ICRS position · RA {route.target.ra}° · Dec {route.target.dec}°
+            <span>Coordinates only; no catalog match verified.</span>
+          </p>
+        )}
         <section className="empty-workspace" aria-labelledby="empty-heading">
           <div>
-            <p className="eyebrow">Target</p>
-            <h2 id="empty-heading">No target selected</h2>
-            <p>Select a sky position to view its observations.</p>
+            {route.error ? <>
+              <h2 id="empty-heading">Unable to open this link</h2>
+              <p role="alert">{route.error}</p>
+              <a className="action-link" href="/" onClick={(event) => navigate(event, 'home', null)}>Open Home</a>
+            </> : route.view === 'home' ? <>
+              <p className="eyebrow">Target</p>
+              <h2 id="empty-heading">{route.target ? 'No observation selected' : 'No target selected'}</h2>
+              <p>{route.target ? 'A sky position is selected. No observation has been loaded.' : 'Select a sky position to view its observations.'}</p>
+            </> : <>
+              <h2 id="empty-heading">View unavailable</h2>
+              <p>{currentView.label} tools are not available yet.</p>
+              <a className="action-link" href={routeUrl('home', route.target)} onClick={(event) => navigate(event, 'home')}>Open Home</a>
+            </>}
           </div>
         </section>
       </main>
