@@ -94,3 +94,22 @@ jobs:
         env:
           IMAGE: ${{ steps.image.outputs.prefix }}-${{ matrix.component }}:sha-${{ github.sha }}
         run: echo "Published $IMAGE" >> "$GITHUB_STEP_SUMMARY"
+
+  verify-published:
+    name: Deploy published images without a build
+    needs: publish
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Pull and deploy the published pair
+        shell: bash
+        run: |
+          export IMAGE_PREFIX="ghcr.io/${GITHUB_REPOSITORY,,}"
+          export IMAGE_TAG="sha-${GITHUB_SHA}"
+          docker compose -f docker-compose.prod.yml pull
+          python3 scripts/check_containers.py --production-only --skip-build \
+            --image-prefix "$IMAGE_PREFIX" --tag "$IMAGE_TAG"

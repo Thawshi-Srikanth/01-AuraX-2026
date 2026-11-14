@@ -34,7 +34,8 @@ stacks before publishing production images for `linux/amd64` and `linux/arm64`:
 - `ghcr.io/thawshi-srikanth/01-aurax-2026-frontend:sha-COMMIT`
 
 `COMMIT` is the full 40-character Git commit SHA from a successful workflow. Both
-publish jobs must finish before deploying that tag. There is no mutable `latest`
+publish jobs and the final pull-only deployment check must finish before
+deploying that tag. There is no mutable `latest`
 tag. Main builds are releases; `codex/deployment-setup` builds provide the same
 commit-tagged images for pre-merge verification. Pull requests check containers
 without publishing. A manual workflow run on main can republish a commit.
