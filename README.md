@@ -8,12 +8,13 @@ This repository is being built progressively, starting with the backend.
 - A minimal FastAPI backend with a health endpoint.
 - Real SIMBAD name resolution and manual ICRS coordinate validation.
 - Bounded SPHEREx Level 2 observation metadata search through IRSA.
-- Internal complete-FITS retrieval and calibration-preserving parsing.
+- Complete-FITS retrieval and calibration-preserving parsing.
+- Image cutout API with physical values, quality masks, and display stretching.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The image API/viewer, spectra, comparisons, and the frontend have not been migrated yet.
+The image viewer, spectra, comparisons, and the frontend have not been migrated yet.
 
 ## Run the backend
 
@@ -100,11 +101,48 @@ include retrieval time, source, and cache status. Network requests have a 5-seco
 connect timeout and 30-second read-inactivity timeout, not a total deadline.
 No image downloads or background jobs run when searching.
 
+## Retrieve an image
+
+Open <http://127.0.0.1:8000/docs> and expand `GET /api/cutout` to try it.
+Supply a direct `access_url` from an observation-search response and its target
+RA/Dec. An observation URL and both coordinates are required; there is no sample
+fallback. `size_deg` is the angular box width (default 0.03, maximum 0.5 degrees),
+and `stretch` accepts `zscale` (default), `linear`, or `log`.
+
+The response contains flattened row-major arrays, with index `y * width + x`.
+Rows retain FITS array order and coordinates are zero based. Images are limited
+to 512 pixels per axis; oversized responses return HTTP 413.
+
+- `pixels`: display values in [0, 1], with nulls for unusable pixels.
+- `raw_flux`: un-stretched surface brightness in MJy/sr, including finite flagged values.
+- `variance`: physical variance in (MJy/sr)^2, with squared unit conversion.
+- `flags`: original integer bitmasks; `valid_pixels` records the display mask.
+
+Nonfinite values are null, not zero. Display masks exclude nonfinite image data,
+nonfinite or negative variance, and quality bits other than SOURCE (21) and
+FULLSAMPLE (12). This is a conservative display policy, not a certification for
+photometry. Available flag definitions are carried from the FITS header.
+See [IRSA's flag documentation](https://irsa.ipac.caltech.edu/onlinehelp/spherex/help.pdf).
+Statistics and contrast limits use only usable pixels. Linear and logarithmic
+modes use min/max limits; logarithmic display applies Astropy LogStretch after
+normalization, preserving negative physical values. ZScale uses Astropy's
+ZScaleInterval. A constant field displays at 0.5 with unchanged physical limits.
+An image with no usable pixels returns `no_usable_pixels` with null statistics.
+
+The response includes the full celestial FITS WCS header with SIP coefficients,
+the target pixel location, calibrated target wavelength and channel width,
+processing version, exact source request URL, and FITS-cache status. Coordinates
+and wavelength are computed before stretching. No background subtraction,
+reprojection, aperture photometry, or integrated flux is performed.
+
+Unusable archive/calibration content returns HTTP 502. Retrieval or local storage
+failures return 503; invalid product URLs return 400. Invalid query parameters
+return 422. Errors do not return placeholder images.
+
 ## FITS retrieval and parsing
 
 The internal `FitsStore` service downloads target-centred cutouts from direct
-IRSA Level 2 product URLs returned by observation search. This step adds no new
-public endpoint; the image API follows in a separate migration chunk.
+IRSA Level 2 product URLs returned by observation search. The public image endpoint uses this service.
 
 ```python
 from app.services.fits_download import FitsStore
@@ -139,8 +177,8 @@ chunks; an in-progress read can still run until its read timeout.
 Validated files are published atomically to the runtime cache; failed temporary
 downloads are removed. Cache identity includes the exact URL, target, and width.
 There is no sample fallback, automatic retry, background download, or total disk
-quota yet. The caller supplies the runtime cache directory; source data stays
-out of Git.
+quota yet. The API uses `backend/cache/fits` by default (alongside the metadata database),
+or `FITS_CACHE_DIR` when supplied. Source data stays out of Git.
 
 ## Local cache
 

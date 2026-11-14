@@ -19,6 +19,10 @@ class FitsDownloadError(RuntimeError):
     """The archive did not deliver a complete validated file."""
 
 
+class FitsContentError(FitsDownloadError):
+    """Archive bytes failed scientific file/target validation."""
+
+
 @dataclass(frozen=True)
 class RetrievedFits:
     path: Path
@@ -120,6 +124,8 @@ class FitsStore:
                 observation.target_pixel(ra, dec)
             os.replace(temporary, path)
             return RetrievedFits(path, request_url, False, count)
+        except InvalidFitsError as error:
+            raise FitsContentError("Archive calibration is unusable") from error
         except (requests.RequestException, OSError, ValueError) as error:
             raise FitsDownloadError(
                 "Could not retrieve a complete calibrated cutout"
