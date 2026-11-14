@@ -354,6 +354,7 @@ export interface SpectralFeature {
 type str = string;
 
 export interface SpectralPoint {
+  source_url?: string;
   artifact_id?: string;
   obs_id?: string;
   utc_date?: string;
@@ -524,4 +525,12 @@ export function adaptMatches(data: ArchiveMatches): MatchResponse {
     complete: data.search_complete && !limited && !data.failed_count && !data.pending_count,
     can_continue: data.can_continue || data.failed_count > 0, auto_continue: data.can_continue && data.status !== 'partial', limited,
     provenance: 'NASA/IPAC IRSA; target-position wavelength checks only' };
+}
+
+
+export async function fetchCachedSample(accessUrl: string, centerRa: number, centerDec: number, size: number, ra: number, dec: number, signal: AbortSignal): Promise<{ sample: Omit<SpectralPoint, 'channel_index' | 'detector'> | null; source_url: string; status: string }> {
+  return readResponse(await fetch(`${API_BASE_URL}/api/spectrum/cached`, {
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_url: accessUrl, center_ra: centerRa, center_dec: centerDec, size_deg: angularSize(size), ra, dec }),
+  }), 'Cached sample unavailable');
 }

@@ -10,9 +10,11 @@ The filter does not bend incoming light into a rainbow. Each position transmits 
 
 ## Read wavelength at the target
 
-Select a target or click a position in an image to open the Wavelengths sheet on
-the right. The Images toolbar can reopen it. The sheet lists measured wavelengths,
-brightness and uncertainties; it does not fill missing wavelengths.
+Select a target or click a position in an image to open the Wavelengths strip above
+the timeline. The Images toolbar can reopen it. The first measurement uses the
+displayed image’s cached file. “Load more samples” requests additional observations.
+The full 0.75–5 µm axis shows measured points with variance error bars; gaps remain
+unmeasured. Measurements on different dates do not form a simultaneous spectrum.
 
 An exposure contains both spatial and spectral information. Each useful sample has a sky position and a wavelength response. A detector label or an exposure-wide wavelength midpoint is not a substitute for the calibrated wavelength at the target pixel.
 

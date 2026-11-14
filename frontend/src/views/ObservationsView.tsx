@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Bookmark, Download, Loader2, PanelRightClose, Pa
 import { NavigationTab, DETECTOR_COLORS } from '../tokens/colors';
 import { ResolvedTarget, fetchObservations, ObservationsResponse, SPHERExObservation, fetchCutout } from '../services/api';
 import { FitsCanvas } from '../components/FitsCanvas';
+import { WavelengthPanel } from '../components/WavelengthPanel';
 import { ObservationTimeline } from '../components/ObservationTimeline';
 import type { DateTimeRange } from '../components/DateTimeRangeFilter';
 import { isTargetSaved, toggleSaveTarget, exportCutoutJson } from '../utils/collections';
@@ -16,6 +17,8 @@ interface ObservationsViewProps {
   target: ResolvedTarget;
   onNavigate: (tab: NavigationTab) => void;
   onTargetResolved?: (target: ResolvedTarget) => void;
+  wavelengthPosition?: WavelengthPosition | null;
+  onCloseWavelengths?: () => void;
   onWavelengthPosition?: (position: WavelengthPosition) => void;
   initialDetector?: string;
   onDetectorChange?: (det: string) => void;
@@ -26,7 +29,7 @@ type Panel = typeof PANELS[number];
 const observationId = (observation: SPHERExObservation) => JSON.stringify([observation.obs_id, observation.detector, observation.access_url]);
 const utcLabel = (value: string) => value.replace('T', ' ').replace(/Z$/, '') + ' UTC';
 
-export function ObservationsView({ target, onNavigate, initialDetector, onDetectorChange, onWavelengthPosition }: ObservationsViewProps) {
+export function ObservationsView({ target, onNavigate, initialDetector, onDetectorChange, onWavelengthPosition, wavelengthPosition, onCloseWavelengths }: ObservationsViewProps) {
   const targetKey = JSON.stringify([target.coordinates.ra_deg, target.coordinates.dec_deg]);
   const [catalog, setCatalog] = useState<{ key: string; response: ObservationsResponse } | null>(null);
   const [catalogRetry, setCatalogRetry] = useState(0);
@@ -207,6 +210,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
           </div>
         </aside>}
       </div>
+      {wavelengthPosition && <WavelengthPanel key={JSON.stringify([wavelengthPosition.ra, wavelengthPosition.dec, frame?.observation.access_url, size])} position={wavelengthPosition} frame={frame} centerRa={target.coordinates.ra_deg} centerDec={target.coordinates.dec_deg} size={size} imageMessage={imageError || (loadingCatalog ? 'Finding observations…' : loadingImage ? 'Waiting for the image to load…' : 'Choose an image or load archive samples.')} onClose={onCloseWavelengths || (() => {})} />}
       <footer className="images-playback">
         <div className="images-transport">
           <div className="images-step-controls">

@@ -97,12 +97,13 @@ Images retain physical brightness, quality masks, and full SIP coordinates from
 Astropy. `/api/catalog/project` maps reference positions through that exact header;
 a projected marker is not a verified image detection or a motion-corrected position.
 
-Wavelengths opens as a right-side sheet when a target or image position is selected.
-It shows measured nearest-pixel samples and their variance errors, without a separate
-image viewer. Recent position results are reused for five minutes; changing selection
-cancels stale requests. First-time archive retrieval can still take time.
-Samples may span dates; no continuous spectrum, identified features, or missing
-channels are inferred. Comparison searches poll resumable background jobs and
+Wavelengths opens as a wide strip above the Images timeline. It plots measured
+nearest-pixel brightness and variance errors over a fixed 0.75–5 µm axis, leaving
+gaps empty. The first sample comes from the displayed image's exact cached FITS
+file, using full SIP WCS and that pixel's wavelength calibration. No extra archive
+request starts automatically. Use “Load more samples” to request bounded additional
+observations while the first measurement remains visible. First-time image downloads
+still depend on archive response times. Comparison searches poll resumable background jobs and
 cancel outstanding jobs when leaving the search. Candidate groups require every
 pair to be verified; only a ready registered sequence can blink. Difference images
 and motion measurements remain unavailable. Fresh saved collections start empty;

@@ -7,7 +7,6 @@ import { DocsView } from './views/DocsView';
 import { ExploreView } from './views/ExploreView';
 import { ObservationsView } from './views/ObservationsView';
 import { CompareView } from './views/CompareView';
-import { WavelengthSheet } from './components/WavelengthSheet';
 import type { WavelengthPosition } from './utils/wavelengthPosition';
 import { CollectionsView } from './views/CollectionsView';
 import { NavigationTab } from './tokens/colors';
@@ -141,6 +140,8 @@ export function App() {
               onNavigate={navigate}
               onTargetResolved={setTarget}
               onWavelengthPosition={setWavelengthPosition}
+              wavelengthPosition={wavelengthPosition}
+              onCloseWavelengths={closeWavelengths}
             />
           )}
           {activeTab === 'Compare' && (
@@ -158,7 +159,6 @@ export function App() {
           )}
           </>}
         </ErrorBoundary>
-        {!nameRequest && !routeProblem && wavelengthPosition && <WavelengthSheet key={JSON.stringify([wavelengthPosition.ra, wavelengthPosition.dec])} position={wavelengthPosition} onClose={closeWavelengths} />}
       </main>
 
       {/* Global Command Palette / Search Modal */}

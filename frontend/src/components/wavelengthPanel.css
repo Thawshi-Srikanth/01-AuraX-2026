@@ -1,0 +1,19 @@
+.wavelength-panel { flex: 0 0 auto; min-width: 0; background: theme('colors.bg.surface'); color: theme('colors.text.primary'); border-top: 1px solid theme('colors.border.subtle'); }
+.wavelength-panel header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 9px 20px; }
+.wavelength-panel header > div { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.wavelength-panel h2 { font-size: 13px; white-space: nowrap; }
+.wavelength-panel header span { font-size: 11px; color: theme('colors.text.secondary'); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wavelength-panel button { font-size: 11px; padding: 5px; white-space: nowrap; }
+.wavelength-panel button:disabled { color: theme('colors.text.secondary'); cursor: wait; }
+.wavelength-panel button:focus-visible, .wavelength-measurement:focus-visible { outline: 1px solid theme('colors.text.primary'); outline-offset: 2px; }
+.wavelength-plot { position: relative; height: clamp(120px, 16vh, 150px); padding: 0 12px; }
+.wavelength-plot svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.wavelength-plot text { font-size: 11px; fill: theme('colors.text.secondary'); }
+.wavelength-axis { stroke: theme('colors.border.strong'); stroke-width: 1; }
+.wavelength-measurement { cursor: pointer; stroke: theme('colors.text.primary'); fill: theme('colors.text.primary'); }
+.wavelength-measurement line { stroke-width: 1.5; }
+.wavelength-hit { fill: transparent; stroke: none; }
+.wavelength-panel footer { display: flex; justify-content: space-between; gap: 8px; padding: 4px 20px 9px; font-size: 10px; color: theme('colors.text.secondary'); flex-wrap: wrap; }
+@media(max-width: 699px) { .wavelength-panel header { padding: 8px; flex-wrap: wrap; } .wavelength-panel header > div:first-child { width: 100%; } .wavelength-panel footer { padding: 4px 8px 8px; } .wavelength-plot { padding: 0 3px; } }
+
+.wavelength-empty { position: absolute; inset: 30px 20px 30px 65px; display: flex; align-items: center; justify-content: center; text-align: center; color: theme('colors.text.secondary'); font-size: 12px; overflow-wrap: anywhere; }
