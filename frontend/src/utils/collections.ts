@@ -182,7 +182,7 @@ export function exportSpectrumIpac(spectrum: SpectrumResponse) {
     `\\ra_deg  = ${spectrum.ra_deg.toFixed(6)}`,
     `\\dec_deg = ${spectrum.dec_deg.toFixed(6)}`,
     `\\bunit   = 'MJy/sr'`,
-    `|channel|detector|wavelength_um|bandwidth_um|resolving_power|flux_mjy_sr |flux_err_mjy|snr     |`,
+    `|sample |detector|wavelength_um|bandwidth_um|resolving_power|flux_mjy_sr |flux_err_mjy|snr     |`,
     `|int    |char    |double       |double      |double         |double      |double      |double  |`,
     `|       |        |um           |um          |               |MJy/sr      |MJy/sr      |        |`,
     `|null   |null    |null         |null        |null           |null        |null        |null    |`,
