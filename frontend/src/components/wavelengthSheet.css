@@ -1,0 +1,16 @@
+.wavelength-sheet { position: absolute; z-index: 40; top: 0; right: 0; bottom: 0; width: min(420px, 100%); background: theme('colors.bg.surface'); border-left: 1px solid theme('colors.border.subtle'); color: theme('colors.text.primary'); display: flex; flex-direction: column; animation: wavelength-enter 160ms ease-out; }
+.wavelength-sheet header { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid theme('colors.border.subtle'); }
+.wavelength-sheet h2 { margin: 0; font-size: 16px; font-weight: 500; }
+.wavelength-sheet header button { padding: 6px; color: theme('colors.text.secondary'); }
+.wavelength-sheet button:focus-visible { outline: 1px solid theme('colors.text.primary'); outline-offset: 3px; }
+.wavelength-sheet-body { padding: 20px; overflow: auto; }
+.wavelength-sheet-body p { margin-bottom: 14px; font-size: 13px; }
+.wavelength-position-name { overflow-wrap: anywhere; }
+.wavelength-sheet-body .wavelength-note { color: theme('colors.text.secondary'); font-size: 12px; line-height: 1.6; }
+.wavelength-sheet table { width: 100%; margin: 20px 0; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.wavelength-sheet th { text-align: left; color: theme('colors.text.secondary'); font-weight: 400; }
+.wavelength-sheet td, .wavelength-sheet th { padding: 10px 5px; border-bottom: 1px solid theme('colors.border.subtle'); }
+.wavelength-sheet small { font-size: 10px; }
+.wavelength-retry { border: 1px solid theme('colors.border.subtle'); padding: 8px 12px; font-size: 12px; }
+@keyframes wavelength-enter { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .wavelength-sheet { animation: none; } }

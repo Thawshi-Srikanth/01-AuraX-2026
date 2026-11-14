@@ -19,7 +19,6 @@ const PRIMARY: { id: NavigationTab; label: string; description: string }[] = [
   { id: 'Compare', label: 'Compare dates', description: 'Inspect two observations together' },
 ];
 const SECONDARY: typeof PRIMARY = [
-  { id: 'Wavelengths', label: 'Wavelengths', description: 'Explore the wavelength view' },
   { id: 'Collections', label: 'Saved targets', description: 'Return to your collections' },
   { id: 'Docs', label: 'Guide', description: 'Learn how to use AURAx and read the data' },
 ];

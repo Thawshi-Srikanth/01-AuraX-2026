@@ -7,7 +7,8 @@ import { DocsView } from './views/DocsView';
 import { ExploreView } from './views/ExploreView';
 import { ObservationsView } from './views/ObservationsView';
 import { CompareView } from './views/CompareView';
-import { WavelengthsView } from './views/WavelengthsView';
+import { WavelengthSheet } from './components/WavelengthSheet';
+import type { WavelengthPosition } from './utils/wavelengthPosition';
 import { CollectionsView } from './views/CollectionsView';
 import { NavigationTab } from './tokens/colors';
 import { ResolvedTarget, resolveTarget } from './services/api';
@@ -30,6 +31,8 @@ export function App() {
   const [routeProblem, setRouteProblem] = useState<string | null>(parsed.error || null);
   const [revision, setRevision] = useState(0);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [wavelengthPosition, setWavelengthPosition] = useState<WavelengthPosition | null>(() => parsed.tab === 'Wavelengths' && !parsed.resolveName && !parsed.error ? { ra: parsed.session.target.coordinates.ra_deg, dec: parsed.session.target.coordinates.dec_deg, label: parsed.session.target.canonical_name } : null);
+  const closeWavelengths = useCallback(() => setWavelengthPosition(null), []);
   const pushNext = useRef(false);
   const sessionRef = useRef(session);
   sessionRef.current = session;
@@ -39,9 +42,17 @@ export function App() {
   const setTarget = useCallback((next: ResolvedTarget) => {
     pushNext.current = targetIdentity(next) !== targetIdentity(sessionRef.current.target);
     setNameRequest(null); setRouteProblem(null);
+    // Saved-target launchers select a target and navigate in the same event.
+    sessionRef.current = { ...sessionRef.current, target: next };
     setSession(current => ({ ...current, target: next }));
+    setWavelengthPosition({ ra: next.coordinates.ra_deg, dec: next.coordinates.dec_deg, label: next.canonical_name || next.query });
   }, []);
   const navigate = useCallback((tab: NavigationTab) => {
+    if (tab === 'Wavelengths') {
+      const current = sessionRef.current.target;
+      setWavelengthPosition({ ra: current.coordinates.ra_deg, dec: current.coordinates.dec_deg, label: current.canonical_name || current.query });
+      tab = 'Observations';
+    }
     pushNext.current = pushNext.current || tab !== activeTab || !!nameRequest || !!routeProblem;
     setNameRequest(null); setRouteProblem(null); setActiveTab(tab);
   }, [activeTab, nameRequest, routeProblem]);
@@ -56,6 +67,7 @@ export function App() {
       params.set('ra', String(resolved.coordinates.ra_deg)); params.set('dec', String(resolved.coordinates.dec_deg));
       setSession(current => readRoute({ ...location, search: '?' + params }, { ...current, target: resolved }).session);
       setNameRequest(null);
+      if (activeTab === 'Wavelengths') setWavelengthPosition({ ra: resolved.coordinates.ra_deg, dec: resolved.coordinates.dec_deg, label: resolved.canonical_name });
     }).catch(() => { if (!cancelled) { setRouteProblem('This target name could not be resolved. Choose a sample or enter coordinates on Home.'); setNameRequest(null); } });
     return () => { cancelled = true; };
   }, [nameRequest, revision]);
@@ -77,6 +89,7 @@ export function App() {
       const snapshot: unknown = event.state?.session;
       const next = readRoute(window.location, validSession(snapshot) ? snapshot : sessionRef.current);
       setSession(next.session); setActiveTab(next.tab); setNameRequest(next.resolveName || null); setRouteProblem(next.error || null);
+      setWavelengthPosition(next.tab === 'Wavelengths' && !next.resolveName && !next.error ? { ra: next.session.target.coordinates.ra_deg, dec: next.session.target.coordinates.dec_deg, label: next.session.target.canonical_name } : null);
       setRevision(value => value + 1);
     }
     window.addEventListener('popstate', onPop);
@@ -96,7 +109,7 @@ export function App() {
     <AnalysisContext.Provider value={context}><div className="min-h-screen h-screen flex flex-col bg-bg-app text-text-primary select-none">
       {/* SpaceX Mission Navbar */}
       <Navbar
-        activeTab={activeTab}
+        activeTab={activeTab === 'Wavelengths' ? 'Observations' : activeTab}
         onTabChange={navigate}
         onOpenSearch={() => setIsSearchOpen(true)}
         targetLabel={nameRequest ? 'Resolving ' + nameRequest : routeProblem ? 'No valid link target' : target.query || target.canonical_name}
@@ -122,20 +135,16 @@ export function App() {
               activeTarget={target}
             />
           )}
-          {activeTab === 'Observations' && (
+          {(activeTab === 'Observations' || activeTab === 'Wavelengths') && (
             <ObservationsView key={targetKey + ":" + revision}
               target={target}
               onNavigate={navigate}
               onTargetResolved={setTarget}
+              onWavelengthPosition={setWavelengthPosition}
             />
           )}
           {activeTab === 'Compare' && (
             <CompareView key={targetKey + ":" + revision} target={target} />
-          )}
-          {activeTab === 'Wavelengths' && (
-            <WavelengthsView key={targetKey + ":" + revision}
-              target={target}
-            />
           )}
           {activeTab === 'Collections' && (
             <CollectionsView
@@ -149,6 +158,7 @@ export function App() {
           )}
           </>}
         </ErrorBoundary>
+        {!nameRequest && !routeProblem && wavelengthPosition && <WavelengthSheet key={JSON.stringify([wavelengthPosition.ra, wavelengthPosition.dec])} position={wavelengthPosition} onClose={closeWavelengths} />}
       </main>
 
       {/* Global Command Palette / Search Modal */}
