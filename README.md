@@ -13,12 +13,12 @@ This repository is being built progressively, starting with the backend.
 - Measured nearest-pixel spectral samples with variance-derived uncertainties.
 - Real SIMBAD catalog cone search with source references and angular distances.
 - Full-SIP, wavelength-screened visual comparison of two observations.
+- Bounded compatible-date discovery with saved progress and explicit retrieval batches.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The image viewer, compatible-date discovery, multi-date sequences, and frontend
-have not been migrated yet.
+The image viewer, multi-date sequences, and frontend have not been migrated yet.
 
 ## Run the backend
 
@@ -288,8 +288,75 @@ requests return HTTP 400/422; unusable data return 502 and retrieval failures 50
 
 This is **visual comparison only**. No PSF matching, background subtraction,
 difference image, propagated reprojection uncertainty, motion measurement,
-proper-motion estimate, or discovery claim is produced. Automatic compatible-date
-search and multi-date preparation remain separate migration chunks.
+proper-motion estimate, or discovery claim is produced. Compatible-date discovery is described below. Multi-date preparation remains a
+separate migration chunk.
+
+## Find compatible dates
+
+Use `POST /api/compare/matches` in <http://127.0.0.1:8000/docs>:
+
+```json
+{
+  "ra": 269.4520769586187,
+  "dec": 4.693364966576667,
+  "detector": "D3",
+  "from_date": "2025-08-15",
+  "to_date": "2025-08-15",
+  "candidate_limit": 4,
+  "advance": false
+}
+```
+
+RA and Dec are required. Optional `detector` accepts D1–D6; `from_date` and
+`to_date` accept UTC calendar dates, with the end date inclusive.
+`candidate_limit` defaults to 24 and accepts 2–64 metadata rows. The archive
+query selects a bounded subset in that scope, with one extra row used to detect
+truncation. Results are sorted by time locally; they are not guaranteed to be the
+globally earliest products. This avoids expensive archive-wide sorting. Metadata
+requests use a 5-second connect timeout and 45-second read-inactivity timeout.
+IRSA can exceed this window even for small filtered queries; a timeout returns
+HTTP 503 without caching an absence of matches. Reprocessed versions sharing
+exposure ID and detector are counted once, using the first product returned by
+the archive; this is not a claim that it is the latest processing version.
+
+A passive request (`advance: false`, the default) may query archive metadata and
+inspect already cached complete FITS files. It **does not download new images**.
+Set `advance: true` to allow at most two new FITS retrieval attempts per request.
+Each pass inspects at most 16 candidates, counting cache misses too, and checks
+a 45-second work budget between items. Passive scans rotate through pending
+candidates so later cached files are not starved by earlier cache misses.
+Existing connection/read/transfer limits still apply; the batch budget is not a
+hard total request deadline. Files use 0.03-degree cutouts at the target.
+
+Progress is stored in the runtime SQLite cache for one hour from metadata
+retrieval, keyed by exact coordinates, detector, date filters, and candidate
+limit. Polling does not extend metadata freshness. Repeated passive requests and
+application restarts reuse previous checks. Failed products are not retried
+unless both `advance: true` and `retry_failed: true` are supplied. One matching
+pass runs per backend process; overlapping matching requests return HTTP 409.
+Use a single backend worker for this initial progress implementation.
+
+The response separately counts verified, quality-excluded, failed, and pending
+candidates. `can_continue` means unchecked candidates remain in this bounded set;
+`can_retry_failed` signals explicitly retryable checks. Truncated metadata,
+rejected rows, pending candidates, and failures keep `search_complete` false.
+When the candidate cap is reached, narrow detector/date filters or increase the
+cap; this version does not automatically page through the rest of the archive.
+Empty results and archive failures are never reported as verified no-match
+findings. A complete empty metadata query is `no_coverage` for that scope.
+
+Each candidate uses actual FITS identity, UTC time, target quality, and approximate
+WCS-WAVE wavelength/bandwidth. Pair checks reuse the comparison wavelength rule,
+require the same detector and different exposure times, and are independent:
+A matching B and B matching C does not certify A matching C. Results rank longer
+time baselines first. At most 24 pairs are listed; `pairs_count` and
+`pairs_truncated` describe that separate response limit.
+
+Each pair includes a `comparison_request` body for `POST /api/compare`.
+**These are target-position candidates, not prepared blink frames.**
+`full_frame_verified` and `blink_ready` remain false until the full preparation
+endpoint checks registration and every relevant image-pixel neighbourhood.
+No difference image, motion estimate, or scientific discovery is produced.
 
 ## FITS retrieval and parsing
 

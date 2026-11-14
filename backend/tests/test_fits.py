@@ -267,3 +267,14 @@ def test_target_location_uses_spatial_sip_then_spectral_lookup(mef):
         assert parsed.wavelength_at(x, y) == pytest.approx((1.234567, 0.04))
         with pytest.raises(InvalidFitsError):
             parsed.target_pixel(200.0, -20.0)
+
+
+def test_cache_only_lookup_never_downloads_or_creates_directories(
+    tmp_path, monkeypatch
+):
+    get = Mock(side_effect=AssertionError("Cache-only lookup contacted archive"))
+    monkeypatch.setattr(download.requests, "get", get)
+    store = download.FitsStore(tmp_path / "absent-cache")
+    assert store.get_cached(URL, 100.0, 20.0) is None
+    assert not store.directory.exists()
+    get.assert_not_called()

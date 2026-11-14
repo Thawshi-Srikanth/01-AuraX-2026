@@ -51,7 +51,7 @@ def matching_wavelengths(wave_a, wave_b, band_a, band_b):
     )
 
 
-def _epoch(data, retrieved, url, expected, ra, dec):
+def read_epoch(data, retrieved, url, expected, ra, dec):
     header = data.hdus["IMAGE"].header
     try:
         identity = (str(header["OBSID"]), "D" + str(int(header["DETECTOR"])))
@@ -169,10 +169,10 @@ def prepare_comparison(request: CompareRequest, store: FitsStore) -> CompareResp
             or max(b.image.shape) > MAX_INPUT_AXIS
         ):
             raise InvalidFitsError("Comparison exceeds bounded image dimensions")
-        epoch_a = _epoch(
+        epoch_a = read_epoch(
             a, retrieved_a, request.access_url_a, identities[0], request.ra, request.dec
         )
-        epoch_b = _epoch(
+        epoch_b = read_epoch(
             b, retrieved_b, request.access_url_b, identities[1], request.ra, request.dec
         )
         image_a, wave_a, band_a, valid_a = _planes(a)

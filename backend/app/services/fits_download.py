@@ -71,17 +71,29 @@ class FitsStore:
         self.directory = Path(directory)
         self.max_bytes = max_bytes
 
-    def fetch(self, access_url: str, ra: float, dec: float, size_deg: float = 0.03):
+    def get_cached(
+        self, access_url: str, ra: float, dec: float, size_deg: float = 0.03
+    ):
+        """Inspect validated cached data without network or directory creation."""
         request_url = cutout_url(access_url, ra, dec, size_deg)
         key = hashlib.sha256(request_url.encode()).hexdigest()
         path = self.directory / f"{key}.fits"
-        if path.is_file() and path.stat().st_size <= self.max_bytes:
-            try:
+        try:
+            if path.is_file() and path.stat().st_size <= self.max_bytes:
                 with open_observation(path) as observation:
                     observation.target_pixel(ra, dec)
                     return RetrievedFits(path, request_url, True, path.stat().st_size)
-            except (InvalidFitsError, OSError):
-                pass
+        except (InvalidFitsError, OSError):
+            pass
+        return None
+
+    def fetch(self, access_url: str, ra: float, dec: float, size_deg: float = 0.03):
+        cached = self.get_cached(access_url, ra, dec, size_deg)
+        if cached is not None:
+            return cached
+        request_url = cutout_url(access_url, ra, dec, size_deg)
+        key = hashlib.sha256(request_url.encode()).hexdigest()
+        path = self.directory / f"{key}.fits"
         self.directory.mkdir(parents=True, exist_ok=True)
         temporary = None
         try:
