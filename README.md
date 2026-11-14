@@ -43,7 +43,7 @@ The health response confirms that the API is running; it does not check external
 
 ## Run the frontend
 
-Frontend work is on `codex/frontend-development`. The existing Home page, navbar,
+The existing Home page, navbar,
 search modal, layouts, styles, view components, reference assets, and guide files
 are copied from the original app. The original design is preserved; future work
 should adapt backend connections without recreating screens.
@@ -738,3 +738,10 @@ The spatial predicate and plane/artifact join follow the
 describes both synchronous and asynchronous query modes. Slow metadata discovery
 now has the local background/resumable workflow described above. Increasing the
 synchronous timeout alone would not establish reliable live availability.
+
+
+## Docker and deployment
+
+See [Containers and deployment](docs/deployment.md) for local development with
+source reload, pull-only production Compose, optional Nginx HTTPS, image publishing,
+cache persistence, updates/rollback and real container verification.

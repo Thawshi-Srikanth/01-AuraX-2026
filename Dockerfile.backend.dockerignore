@@ -1,0 +1,18 @@
+**
+!Dockerfile.backend
+!backend/
+!backend/pyproject.toml
+!backend/uv.lock
+!backend/app/
+!backend/app/**
+backend/app/**/__pycache__/
+backend/app/**/*.pyc
+backend/app/**/.env*
+
+# Keep runtime data and credentials out of every stage.
+**/*.pem
+**/*.key
+**/*.fits
+**/*.fits.gz
+**/*.db
+**/*.sqlite*

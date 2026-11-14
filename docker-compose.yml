@@ -1,0 +1,44 @@
+# Local development with source mounts and reload. Production uses the separate file.
+name: aurax-dev
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+      target: development
+    init: true
+    environment:
+      CACHE_DB_PATH: /data/aurax.db
+      FITS_CACHE_DIR: /data/fits
+      FITS_CACHE_MAX_BYTES: ${FITS_CACHE_MAX_BYTES:-536870912}
+      FITS_CACHE_MAX_FILE_BYTES: ${FITS_CACHE_MAX_FILE_BYTES:-134217728}
+      FITS_CACHE_MAX_IDLE_SECONDS: ${FITS_CACHE_MAX_IDLE_SECONDS:-604800}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+    ports:
+      - "127.0.0.1:${DEV_BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend:/app
+      - backend-cache:/data
+    stop_grace_period: 150s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: development
+    init: true
+    environment:
+      VITE_API_BASE_URL: /backend
+      AURAX_BACKEND_URL: http://backend:8000
+    ports:
+      - "127.0.0.1:${DEV_FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend-modules:/app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  backend-cache:
+  frontend-modules:
