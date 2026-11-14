@@ -21,10 +21,10 @@ This repository is being built progressively, starting with the backend.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The frontend currently provides a branded workspace shell, validated navigation
-and session restoration, a real backend connection check, and target search by
-name or ICRS coordinates, plus the copied Explore sky map. The image viewer and
-remaining science views have not yet been migrated.
+The frontend has been restored by copying the existing application's UI files,
+styles, view components, local assets, dependency manifest, and lockfile.
+Backend connections are still being migrated separately; copied screens do not
+imply that every scientific workflow is integrated yet.
 
 ## Run the backend
 
@@ -42,10 +42,12 @@ The health response confirms that the API is running; it does not check external
 
 ## Run the frontend
 
-Frontend development takes place on `codex/frontend-development`. Use Bun for
-installation, scripts, and builds. The foundation is verified with Bun 1.3.5.
+Frontend work is on `codex/frontend-development`. The existing Home page, navbar,
+search modal, layouts, styles, view components, reference assets, and guide files
+are copied from the original app. The original design is preserved; future work
+should adapt backend connections without recreating screens.
 
-Start the backend as above, then in another terminal:
+Start the backend, then in another terminal:
 
 ```sh
 cd frontend
@@ -53,80 +55,27 @@ bun install --frozen-lockfile
 bun run dev
 ```
 
-Open <http://127.0.0.1:5173>. The workspace checks the real `/health` response
-on load and on **Check connection**, with a five-second timeout. Failed requests,
-HTTP errors, and invalid responses show **Backend unavailable** with a retry.
-Connection status verifies the API, not archive availability. No observations or
-targets are fabricated, and the shell makes no astronomy archive requests.
+Open <http://127.0.0.1:5173>. The original dependency versions are recorded in the
+copied Bun lockfile. The Vite development proxy sends `/backend` requests to
+`http://127.0.0.1:8000`. `frontend/.env.example` documents alternate backend URLs;
+restart Vite after changing configuration. Production static hosting needs the
+same proxy or an explicit public `VITE_API_BASE_URL`, matching backend CORS origins,
+and an `index.html` fallback for application routes.
 
-The development server proxies `/backend` to `http://127.0.0.1:8000`. To change
-the backend, copy `frontend/.env.example` to `frontend/.env` and set
-`AURAX_BACKEND_URL`; restart Vite after configuration changes.
-`VITE_API_BASE_URL` defaults to `/backend`. For a production static deployment,
-configure a reverse proxy for that path or supply the backend's public URL at
-build time and configure its `CORS_ORIGINS` for the frontend origin. `VITE_*`
-settings are public browser configuration and must never contain credentials.
-The Vite development proxy is not a production deployment server.
+The original resolver signatures are adapted to the tested name/coordinate
+client. Unknown coordinate epochs remain unspecified. The default target is an
+example starting position, without hard-coded proper motion or catalog verification.
+The existing map's reference overlays are not queried exposure coverage; its
+coordinate launch uses the backend rather than inventing fallback metadata.
 
-The shell reuses `aura.svg` and defines the shared dark palette in
-`frontend/src/tokens.css`. It includes responsive layout and keyboard focus/skip
-navigation. Home includes target search; other science views remain separate migration chunks.
+The original image and wavelength screens expect older response formats. API
+boundary guards report an integration error for incompatible responses rather
+than inventing values or allowing the copied renderers to misinterpret data.
+Observation/image/spectral adapters remain separate migration tasks. The copied
+view files and guide text describe the original app and are not a claim that all
+of those backend connections are ready in this repository.
 
-Navigation uses the original view paths: Home `/`, Explore `/sky`, Observations
-`/images`, Compare dates `/compare`, Wavelengths `/wavelengths`, Collections
-`/saved`, and Help `/docs`. Views whose tools are not migrated display an explicit
-unavailable state; route availability does not imply scientific tools are ready.
-Normal clicks use browser history, and modified clicks retain normal link behavior.
-Back/Forward restores the view and coordinates encoded in that history entry.
-
-The current tab stores only the last valid view and optional ICRS coordinates in
-`sessionStorage`, with schema versioning and bounded input validation. A bare `/`
-visit resumes this session; explicit view paths and coordinate links take priority.
-Direct links can include `?ra=...&dec=...`; both coordinates are required, checked
-against the backend's ranges, and preserve numeric precision. Coordinates are
-labelled unverified positions, never catalog matches or propagated epochs.
-No default object, observations, credentials, job records, or science arrays are
-saved. Unknown paths and malformed coordinates show an error with a Home recovery
-link. Invalid links do not overwrite the previous valid session. Missing, corrupt,
-blocked, or full session storage does not prevent navigation. A static host must
-serve `index.html` for these application paths to support direct links and reloads.
-
-On Home, **Search the sky** supports either an object name/catalog identifier
-(up to 200 characters) or RA/Dec in decimal degrees. Both modes use the real
-`/api/resolve` endpoint. Coordinates are locally validated before a request;
-named results preserve catalog provenance, source links, and coordinate references.
-Manual positions never claim a catalog match, and missing coordinate epochs remain
-unspecified. Catalog type codes are displayed as returned by the backend.
-
-The browser stops waiting after 40 seconds. **Cancel search**, a changed history
-position, or leaving Home invalidates the pending result so it cannot replace a
-later selection. Cancelling does not guarantee an already running backend/catalog
-request stops. Input errors, not-found and ambiguous names, unavailable catalogs,
-and malformed responses remain errors; failed searches preserve the prior selected
-position. There is no synthetic target or fallback name resolution.
-
-A successful lookup updates the coordinate URL and tab session. Catalog metadata
-is kept only in memory during this app visit; reloads retain coordinates but show
-an unverified position until another lookup, rather than restoring a catalog match
-from user-editable storage. No proper-motion propagation is performed. Live browser
-checks verified a real Barnard's Star lookup and manual-coordinate validation;
-external SIMBAD availability is still independent of backend health.
-
-Explore now uses the existing application's `SkyMapView` renderer, controls,
-star/constellation files, and local `noirlab_galactic_4k.jpg` background. Its
-original 3D/flat projections, pan/zoom/reset, and layer toggles are retained.
-The copied map uses the original Tailwind configuration and icon dependency.
-No replacement atlas service or Aladin dependency is included.
-
-Static footprints, including a generated target-field rectangle, are illustrative
-legacy overlays and are explicitly labelled as such; they are not queried or
-verified SPHEREx observations or exposure coverage. The photo is a reference
-background, not calibrated SPHEREx imagery. Selecting **Observe** validates the
-position through the real coordinate resolver and opens the Observations route.
-Failure shows an error instead of constructing a catalog identity or epoch.
-The Observations tools themselves are a later migration chunk.
-
-Verify the frontend from `frontend/`:
+Verify from `frontend/`:
 
 ```sh
 bun run lint
@@ -134,9 +83,11 @@ bun test
 bun run build
 ```
 
-The frontend workflow runs these checks on pushes to the frontend branch or main
-and on frontend pull requests. Generated builds, dependencies, and local `.env`
-files remain outside Git.
+Original frontend tests are copied along with the view utilities. The tested
+resolver client is retained in `src/services/resolverClient.ts`. The frontend
+workflow runs locked installation, lint, tests, and build on relevant pushes.
+Generated builds, dependencies, credentials, and local configuration are not
+committed. Copied manual articles are user documentation, not migration backlogs.
 
 ## Configuration
 

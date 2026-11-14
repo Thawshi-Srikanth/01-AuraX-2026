@@ -4,7 +4,7 @@ import {
   SpherexDetectorChunk,
   BRIGHT_NAV_STARS,
 } from '../data/skyCoverage';
-import { type TargetResult, resolveTarget } from '../services/api';
+import { ResolvedTarget, resolveCoordinates } from '../services/api';
 import { NavigationTab } from '../tokens/colors';
 import {
   RotateCcw,
@@ -24,8 +24,8 @@ import constellationsMetaRaw from '../data/celestial/constellations.json';
 
 interface SkyMapViewProps {
   onNavigate: (tab: NavigationTab) => void;
-  onTargetResolved: (target: TargetResult) => void;
-  activeTarget?: TargetResult;
+  onTargetResolved: (target: ResolvedTarget) => void;
+  activeTarget?: ResolvedTarget;
 }
 
 // Shortest modular Right Ascension difference in degrees [0, 180]
@@ -1099,7 +1099,7 @@ export const SkyMapView: React.FC<SkyMapViewProps> = ({ onNavigate, onTargetReso
     try {
       setIsLaunching(true);
       setLaunchError(null);
-      const result = await resolveTarget({ kind: 'coordinates', ra: String(((ra % 360) + 360) % 360), dec: String(dec) });
+      const result = await resolveCoordinates(((ra % 360) + 360) % 360, dec);
       onTargetResolved(result);
       onNavigate('Observations');
     } catch {

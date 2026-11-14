@@ -1,115 +1,166 @@
-import { useEffect, useState } from 'react';
-import { fetchHealth } from './services/api';
-import type { TargetResult } from './services/api';
-import { TargetSearch } from './components/TargetSearch';
-import { SkyMapView } from './components/SkyMapView';
-import { views, routeUrl } from './navigation/session';
-import { useNavigation } from './navigation/useNavigation';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { Navbar } from './components/Navbar';
+import { ErrorBoundary } from './components/ErrorBoundary';
+import { SearchModal } from './components/SearchModal';
+import { LandingView } from './views/LandingView';
+import { DocsView } from './views/DocsView';
+import { ExploreView } from './views/ExploreView';
+import { ObservationsView } from './views/ObservationsView';
+import { CompareView } from './views/CompareView';
+import { WavelengthsView } from './views/WavelengthsView';
+import { CollectionsView } from './views/CollectionsView';
+import { NavigationTab } from './tokens/colors';
+import { ResolvedTarget, resolveTarget } from './services/api';
 
-type Connection = 'checking' | 'connected' | 'unavailable';
-const labels: Record<Connection, string> = {
-  checking: 'Checking connection',
-  connected: 'Backend connected',
-  unavailable: 'Backend unavailable',
-};
+import { AnalysisContext } from './utils/AnalysisContext';
+import { emptySession, readSession, readRoute, routeUrl, validSession, targetIdentity, SESSION_KEY } from './utils/navigation';
+import type { AnalysisSession } from './utils/navigation';
+
+function boot() {
+  let session = emptySession();
+  try { session = readSession(window.sessionStorage); } catch { /* Storage can be unavailable. */ }
+  return readRoute(window.location, session);
+}
 
 export function App() {
-  const { route, navigate, selectTarget } = useNavigation();
-  const [resolved, setResolved] = useState<TargetResult | null>(null);
-  const selected = resolved && route.target?.ra === resolved.coordinates.ra_deg && route.target?.dec === resolved.coordinates.dec_deg ? resolved : null;
-  function select(result: TargetResult) {
-    setResolved(result);
-    selectTarget({ ra: result.coordinates.ra_deg, dec: result.coordinates.dec_deg });
-  }
-  const currentView = views.find((view) => view.id === route.view)!;
-  const [connection, setConnection] = useState<Connection>('checking');
-  const [attempt, setAttempt] = useState(0);
+  const parsed = useMemo(boot, []);
+  const [activeTab, setActiveTab] = useState<NavigationTab>(parsed.tab);
+  const [session, setSession] = useState<AnalysisSession>(parsed.session);
+  const [nameRequest, setNameRequest] = useState<string | null>(parsed.resolveName || null);
+  const [routeProblem, setRouteProblem] = useState<string | null>(parsed.error || null);
+  const [revision, setRevision] = useState(0);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const pushNext = useRef(false);
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const target = session.target;
+  const targetKey = targetIdentity(target);
+  const context = useMemo(() => ({ session, setSession }), [session]);
+  const setTarget = useCallback((next: ResolvedTarget) => {
+    pushNext.current = targetIdentity(next) !== targetIdentity(sessionRef.current.target);
+    setNameRequest(null); setRouteProblem(null);
+    setSession(current => ({ ...current, target: next }));
+  }, []);
+  const navigate = useCallback((tab: NavigationTab) => {
+    pushNext.current = pushNext.current || tab !== activeTab || !!nameRequest || !!routeProblem;
+    setNameRequest(null); setRouteProblem(null); setActiveTab(tab);
+  }, [activeTab, nameRequest, routeProblem]);
 
   useEffect(() => {
-    let active = true;
-    const controller = new AbortController();
-    const timeout = window.setTimeout(() => controller.abort(), 5000);
-    fetchHealth(controller.signal)
-      .then(() => { if (active) setConnection('connected'); })
-      .catch(() => { if (active) setConnection('unavailable'); })
-      .finally(() => window.clearTimeout(timeout));
-    return () => {
-      active = false;
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [attempt]);
+    if (!nameRequest) return;
+    let cancelled = false;
+    const location = { pathname: window.location.pathname, search: window.location.search };
+    resolveTarget(nameRequest).then(resolved => {
+      if (cancelled) return;
+      const params = new URLSearchParams(location.search);
+      params.set('ra', String(resolved.coordinates.ra_deg)); params.set('dec', String(resolved.coordinates.dec_deg));
+      setSession(current => readRoute({ ...location, search: '?' + params }, { ...current, target: resolved }).session);
+      setNameRequest(null);
+    }).catch(() => { if (!cancelled) { setRouteProblem('This target name could not be resolved. Choose a sample or enter coordinates on Home.'); setNameRequest(null); } });
+    return () => { cancelled = true; };
+  }, [nameRequest, revision]);
 
-  function checkConnection() {
-    setConnection('checking');
-    setAttempt((current) => current + 1);
-  }
+  useEffect(() => {
+    try { window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session)); } catch { /* In-memory navigation still works. */ }
+    if (nameRequest || routeProblem) return;
+    const shouldPush = pushNext.current;
+    pushNext.current = false;
+    const url = routeUrl(activeTab, session) + (activeTab === 'Docs' && !shouldPush ? window.location.hash : '');
+    const state = { aurax: 1, tab: activeTab, session };
+    if (shouldPush && url !== window.location.pathname + window.location.search + window.location.hash) window.history.pushState(state, '', url);
+    else window.history.replaceState(state, '', url);
+  }, [activeTab, session, nameRequest, routeProblem]);
+
+  useEffect(() => {
+    function onPop(event: PopStateEvent) {
+      pushNext.current = false;
+      const snapshot: unknown = event.state?.session;
+      const next = readRoute(window.location, validSession(snapshot) ? snapshot : sessionRef.current);
+      setSession(next.session); setActiveTab(next.tab); setNameRequest(next.resolveName || null); setRouteProblem(next.error || null);
+      setRevision(value => value + 1);
+    }
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setIsSearchOpen(value => !value); }
+      else if (event.key === '/' && !isSearchOpen && !['input', 'textarea'].includes((event.target as HTMLElement)?.tagName?.toLowerCase())) { event.preventDefault(); setIsSearchOpen(true); }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isSearchOpen]);
 
   return (
-    <div className="app-shell">
-      <a className="skip-link" href="#workspace">Skip to workspace</a>
-      <header className="app-header">
-        <a className="brand" href={routeUrl('home', route.target)} onClick={(event) => navigate(event, 'home')} aria-label="AURAx home">
-          <img src="/aura.svg" alt="" width="40" height="25" />
-          <span>AURAx</span>
-        </a>
-        <nav aria-label="Main navigation">{views.map((view) => (
-          <a key={view.id} href={routeUrl(view.id, route.target)}
-            onClick={(event) => navigate(event, view.id)}
-            aria-current={!route.error && route.view === view.id ? 'page' : undefined}>
-            {view.label}
-          </a>
-        ))}</nav>
-        <div className="connection-tools">
-          <p className="connection" data-state={connection} role="status" aria-live="polite">
-            <span className="status-dot" aria-hidden="true" />{labels[connection]}
-          </p>
-          <button type="button" onClick={checkConnection} disabled={connection === 'checking'}>
-            {connection === 'unavailable' ? 'Retry connection' : 'Check connection'}
-          </button>
-        </div>
-      </header>
-      <main id="workspace" tabIndex={-1}>
-        <div className="workspace-heading"><h1>{route.error ? 'Invalid link' : currentView.label}</h1><span>SPHEREx observations</span></div>
-        {connection === 'unavailable' && (
-          <p className="connection-warning">The backend could not be reached. Check that it is running, then retry.</p>
-        )}
-        {route.target && !route.error && (
-          <section className="target-position" aria-label="Selected target">
-            <strong>{selected?.canonical_name || 'ICRS position'}</strong>
-            <span>RA {route.target.ra}° · Dec {route.target.dec}° · ICRS</span>
-            <span>{selected?.provenance || 'Coordinates only; no catalog match verified.'}</span>
-            {selected && <>
-              <span>Type: {selected.object_type} · Coordinate epoch: {selected.coordinates.epoch || 'Not supplied'}</span>
-              {selected.coordinate_reference && <span>Coordinate reference: {selected.coordinate_reference}</span>}
-              {selected.source_url && <a href={selected.source_url} target="_blank" rel="noopener noreferrer">Catalog source</a>}
-            </>}
-          </section>
-        )}
-        {route.view === 'home' && !route.error ? <TargetSearch target={route.target} onSelect={select} /> :
-        route.view === 'explore' && !route.error ? <section className="legacy-explore" aria-label="Explore sky map">
-          <p className="field-hint">Legacy reference sky. Static footprint overlays are illustrative, not verified archive coverage.</p>
-          <div className="legacy-map"><SkyMapView
-            activeTarget={route.target ? { canonical_name: selected?.canonical_name || 'Selected position', coordinates: { ra_deg: route.target.ra, dec_deg: route.target.dec, frame: 'ICRS', epoch: null }, object_type: 'Coordinate Location', provenance: 'Coordinates only', source_url: null, coordinate_reference: null, retrieved_at: null, cached: false } : undefined}
-            onTargetResolved={(result) => { setResolved(result); selectTarget({ ra: result.coordinates.ra_deg, dec: result.coordinates.dec_deg }, 'observations'); }}
-            onNavigate={() => undefined}
-          /></div>
-        </section> :
-        <section className="empty-workspace" aria-labelledby="empty-heading">
-          <div>
-            {route.error ? <>
-              <h2 id="empty-heading">Unable to open this link</h2>
-              <p role="alert">{route.error}</p>
-              <a className="action-link" href="/" onClick={(event) => navigate(event, 'home', null)}>Open Home</a>
-            </> : <>
-              <h2 id="empty-heading">View unavailable</h2>
-              <p>{currentView.label} tools are not available yet.</p>
-              <a className="action-link" href={routeUrl('home', route.target)} onClick={(event) => navigate(event, 'home')}>Open Home</a>
-            </>}
-          </div>
-        </section>}
+    <AnalysisContext.Provider value={context}><div className="min-h-screen h-screen flex flex-col bg-bg-app text-text-primary select-none">
+      {/* SpaceX Mission Navbar */}
+      <Navbar
+        activeTab={activeTab}
+        onTabChange={navigate}
+        onOpenSearch={() => setIsSearchOpen(true)}
+        targetLabel={nameRequest ? 'Resolving ' + nameRequest : routeProblem ? 'No valid link target' : target.query || target.canonical_name}
+        coordinateLabel={nameRequest || routeProblem ? undefined : 'RA ' + target.coordinates.ra_deg.toFixed(5) + '° · Dec ' + target.coordinates.dec_deg.toFixed(5) + '°'}
+        labelUnverified={!nameRequest && !routeProblem && ['URL label — not independently verified', 'Example starting coordinates; not catalog verified'].includes(target.provenance)}
+      />
+
+      {/* Main Viewport Container */}
+      <main className="flex-1 flex flex-col overflow-hidden relative">
+        <ErrorBoundary>
+          {nameRequest || routeProblem ? <section className="m-auto max-w-xl p-8 text-center" role="status"><p>{nameRequest ? 'Resolving ' + nameRequest + '…' : routeProblem}</p><button type="button" className="mt-6 underline" onClick={() => navigate('Home')}>Open Home</button></section> : <>
+          {activeTab === 'Home' && (
+            <LandingView
+              onNavigate={navigate}
+              onTargetResolved={setTarget}
+              activeTarget={target}
+            />
+          )}
+          {activeTab === 'Explore' && (
+            <ExploreView
+              onNavigate={navigate}
+              onTargetResolved={setTarget}
+              activeTarget={target}
+            />
+          )}
+          {activeTab === 'Observations' && (
+            <ObservationsView key={targetKey + ":" + revision}
+              target={target}
+              onNavigate={navigate}
+              onTargetResolved={setTarget}
+            />
+          )}
+          {activeTab === 'Compare' && (
+            <CompareView key={targetKey + ":" + revision} target={target} />
+          )}
+          {activeTab === 'Wavelengths' && (
+            <WavelengthsView key={targetKey + ":" + revision}
+              target={target}
+            />
+          )}
+          {activeTab === 'Collections' && (
+            <CollectionsView
+              currentTarget={target}
+              onSelectTarget={setTarget}
+              onNavigate={navigate}
+            />
+          )}
+          {activeTab === 'Docs' && (
+            <DocsView onNavigate={navigate} />
+          )}
+          </>}
+        </ErrorBoundary>
       </main>
-      <footer><span>AURAx</span><p>Connection status checks the API only. Archive availability is checked separately.</p></footer>
-    </div>
+
+      {/* Global Command Palette / Search Modal */}
+      <SearchModal
+        isOpen={isSearchOpen}
+        onClose={() => setIsSearchOpen(false)}
+        onTargetResolved={setTarget}
+        onNavigate={navigate}
+        currentTab={activeTab === 'Home' || activeTab === 'Docs' ? 'Observations' : activeTab}
+      />
+    </div></AnalysisContext.Provider>
   );
 }
+
+export default App;

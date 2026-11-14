@@ -1,5 +1,5 @@
 import { afterEach, expect, mock, test } from 'bun:test';
-import { resolveTarget, targetParameters } from '../src/services/api';
+import { resolveTarget, targetParameters } from '../src/services/resolverClient';
 
 const original = globalThis.fetch;
 afterEach(() => { globalThis.fetch = original; });
