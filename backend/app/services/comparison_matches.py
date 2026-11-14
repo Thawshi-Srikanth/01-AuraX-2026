@@ -25,6 +25,7 @@ from app.services.comparison_candidates import CandidateBatch, query_candidates
 from app.services.fits_download import FitsContentError, FitsDownloadError, FitsStore
 from app.services.fits_parser import InvalidFitsError, open_observation
 from app.services.quality import usable_pixels
+from app.services.search_control import SearchStopped
 
 STATE_NAMESPACE = "comparison_matches:v1"
 STATE_TTL_SECONDS = 3600
@@ -135,13 +136,42 @@ def _pairs(checks, request):
     return pairs
 
 
-def _run(request: MatchRequest, cache: CacheManager, store: FitsStore):
+def _persist(state, key, cache):
+    remaining = (
+        STATE_TTL_SECONDS
+        - (datetime.now(UTC) - state.batch.retrieved_at).total_seconds()
+    )
+    return bool(
+        state.batch.observations
+        and remaining > 0
+        and cache.set(key, state.model_dump(mode="json"), STATE_NAMESPACE, remaining)
+    )
+
+
+def _run(request: MatchRequest, cache: CacheManager, store: FitsStore, control=None):
     deadline = time.monotonic() + BATCH_BUDGET_SECONDS
     scope = request.model_dump(mode="json", exclude={"advance", "retry_failed"})
     key = hashlib.sha256(
         json.dumps(scope, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
     state, state_cached = None, False
+    downloads, local_checks, inspections = 0, 0, 0
+
+    def checkpoint(stage):
+        if control is not None:
+            try:
+                control(
+                    stage,
+                    candidate_count=len(state.batch.observations) if state else None,
+                    processed_count=len(state.checks) if state else 0,
+                    new_download_attempts=downloads,
+                )
+            except SearchStopped:
+                if state is not None:
+                    _persist(state, key, cache)
+                raise
+
+    checkpoint("metadata")
     cached = cache.get(key, STATE_NAMESPACE)
     if cached is not None:
         try:
@@ -158,13 +188,14 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore):
             for key, check in state.checks.items()
             if check.status != "failed"
         }
+    checkpoint("checking_files")
     reused = len(state.checks)
-    downloads, local_checks, inspections = 0, 0, 0
     products = list(enumerate(state.batch.observations))
     if products:
         start = state.next_candidate_index % len(products)
         products = products[start:] + products[:start]
     for index, product in products:
+        checkpoint("checking_files")
         if product.artifact_id in state.checks:
             continue
         if inspections >= MAX_FILE_CHECKS or time.monotonic() >= deadline:
@@ -180,12 +211,28 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore):
                 if retrieved is None:
                     if not request.advance or downloads >= MAX_NEW_DOWNLOADS:
                         continue
-                    downloads += 1
-                    retrieved = store.fetch(
-                        product.access_url, request.ra, request.dec, 0.03
-                    )
+                    if control is None:
+                        downloads += 1
+                        retrieved = store.fetch(
+                            product.access_url, request.ra, request.dec, 0.03
+                        )
+                    else:
+                        writer = store.policy.state.writer
+                        while True:
+                            checkpoint("waiting_for_download")
+                            if writer.acquire(timeout=0.1):
+                                break
+                        try:
+                            checkpoint("checking_files")
+                            downloads += 1
+                            retrieved = store.fetch(
+                                product.access_url, request.ra, request.dec, 0.03
+                            )
+                        finally:
+                            writer.release()
                 else:
                     local_checks += 1
+                checkpoint("checking_files")
                 check = _inspect(product, retrieved, request)
         except (FitsContentError, InvalidFitsError, ValueError):
             check = ObservationCheck(
@@ -202,6 +249,7 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore):
                 reason="download_failed",
             )
         state.checks[product.artifact_id] = check
+    checkpoint("saving")
     checks = [
         state.checks[product.artifact_id]
         for product in state.batch.observations
@@ -237,20 +285,9 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore):
             "no_matches",
             "No usable pairs among the fully checked candidates in this scope.",
         )
-    # Metadata age, rather than polling activity, fixes this search's expiry.
-    remaining = (
-        STATE_TTL_SECONDS
-        - (datetime.now(UTC) - state.batch.retrieved_at).total_seconds()
-    )
-    persisted = False
-    if state.batch.observations and remaining > 0:
-        persisted = cache.set(
-            key, state.model_dump(mode="json"), STATE_NAMESPACE, remaining
-        )
-        if not persisted:
-            message += (
-                " Progress could not be saved; a later request may repeat checks."
-            )
+    persisted = _persist(state, key, cache)
+    if state.batch.observations and not persisted:
+        message += " Progress could not be saved; a later request may repeat checks."
     return MatchResponse(
         ra=request.ra,
         dec=request.dec,
@@ -287,10 +324,18 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore):
     )
 
 
-def discover_matches(request: MatchRequest, cache: CacheManager, store: FitsStore):
-    if not _SEARCH_LOCK.acquire(blocking=False):
-        raise MatchingBusy
+def discover_matches(
+    request: MatchRequest, cache: CacheManager, store: FitsStore, *, control=None
+):
+    if control is None:
+        if not _SEARCH_LOCK.acquire(blocking=False):
+            raise MatchingBusy
+    else:
+        while True:
+            control("waiting_for_search")
+            if _SEARCH_LOCK.acquire(timeout=0.1):
+                break
     try:
-        return _run(request, cache, store)
+        return _run(request, cache, store, control=control)
     finally:
         _SEARCH_LOCK.release()

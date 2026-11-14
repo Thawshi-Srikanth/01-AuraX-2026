@@ -3,6 +3,7 @@
 from fastapi import APIRouter, HTTPException, Request
 
 from app.schemas.compare import CompareRequest, CompareResponse
+from app.schemas.comparison_job import ComparisonJobResponse
 from app.schemas.comparison_matches import MatchRequest, MatchResponse
 from app.schemas.sequence import SequenceRequest, SequenceResponse
 from app.services.compare import (
@@ -10,6 +11,7 @@ from app.services.compare import (
     validate_observations,
     validate_pair,
 )
+from app.services.comparison_jobs import SearchQueueFull, SearchWorkerClosed
 from app.services.comparison_matches import MatchingBusy, discover_matches
 from app.services.comparison_sequence import prepare_sequence
 from app.services.fits_download import FitsContentError, FitsDownloadError
@@ -71,3 +73,37 @@ def sequence(request: Request, payload: SequenceRequest):
         raise HTTPException(
             503, "Sequence images could not be retrieved. Try again."
         ) from error
+
+
+@router.post(
+    "/compare/matches/jobs", response_model=ComparisonJobResponse, status_code=202
+)
+def start_search_job(request: Request, payload: MatchRequest):
+    try:
+        return request.app.state.comparison_jobs.submit(payload)
+    except SearchQueueFull as error:
+        raise HTTPException(
+            429,
+            "Date-search job queue is full. Try later.",
+            headers={"Retry-After": "1"},
+        ) from error
+    except SearchWorkerClosed as error:
+        raise HTTPException(503, "Date-search worker is stopping.") from error
+
+
+@router.get("/compare/matches/jobs/{job_id}", response_model=ComparisonJobResponse)
+def search_job_status(request: Request, job_id: str):
+    result = request.app.state.comparison_jobs.get(job_id)
+    if result is None:
+        raise HTTPException(404, "Date-search job not found or no longer retained.")
+    return result
+
+
+@router.post(
+    "/compare/matches/jobs/{job_id}/cancel", response_model=ComparisonJobResponse
+)
+def cancel_search_job(request: Request, job_id: str):
+    result = request.app.state.comparison_jobs.cancel(job_id)
+    if result is None:
+        raise HTTPException(404, "Date-search job not found or no longer retained.")
+    return result

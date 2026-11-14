@@ -14,6 +14,7 @@ This repository is being built progressively, starting with the backend.
 - Real SIMBAD catalog cone search with source references and angular distances.
 - Full-SIP, wavelength-screened visual comparison of two observations.
 - Bounded compatible-date discovery with saved progress and explicit retrieval batches.
+- Background date-search jobs with polling, cancellation, and bounded queues.
 - Two-to-four-observation sequence preparation with every-pair wavelength screening.
 - Quota-limited FITS cache and explicit bounded background cache jobs.
 - Explicit configuration of allowed browser origins.
@@ -404,6 +405,80 @@ Each pair includes a `comparison_request` body for `POST /api/compare`.
 endpoint checks registration and every relevant image-pixel neighbourhood.
 No difference image, motion estimate, or scientific discovery is produced.
 
+## Background date-search jobs
+
+`POST /api/compare/matches/jobs` accepts the same body as `/api/compare/matches`
+and returns **202** with a job ID immediately. For example:
+
+```json
+{
+  "ra": 269.4520769586187,
+  "dec": 4.693364966576667,
+  "detector": "D3",
+  "from_date": "2025-08-15",
+  "to_date": "2025-08-15",
+  "candidate_limit": 2,
+  "advance": false
+}
+```
+
+Poll `GET /api/compare/matches/jobs/{job_id}` for status, stage, candidate count,
+processed checks, download attempts, and the eventual `result`. Cancel remaining
+work with `POST /api/compare/matches/jobs/{job_id}/cancel`. Polling never starts
+queries or downloads. `candidate_count` remains null until actual metadata is
+available; failures never produce fabricated or empty success results.
+
+Each job runs **one bounded matching pass**, using the existing metadata, quality,
+wavelength, and cache rules. `completed` means that pass finished: inspect
+`result.status`, `result.pending_count`, `result.search_complete`, and truncation
+before interpreting it as a complete search. Default `advance: false` permits
+cached-file inspection only. Explicit `advance: true` permits at most two new
+FITS retrieval attempts; it does not automatically repeat passes. Submit another
+job to continue saved progress. Failed items are retried only with the existing
+explicit `advance: true, retry_failed: true` controls.
+
+One date-search worker admits at most **four queued/running jobs**, deduplicates
+identical active requests, and retains at most **16 terminal records**. A full
+queue returns **429** with `Retry-After`; unavailable or pre-restart IDs return
+**404**. Job records live in memory, while bounded matching progress uses the
+existing one-hour SQLite state expiry, fixed from metadata retrieval time.
+Use a single backend process as required by the cache and search locks.
+
+Stages are `queued`, `waiting_for_search`, `metadata`, `checking_files`,
+`waiting_for_download`, `saving`, and `finished`. Job status is `queued`,
+`running`, `completed`, `failed`, `cancelled`, or `expired`. Error codes distinguish
+`archive_unavailable`, `invalid_metadata`, and `internal_error`; details and local
+paths are not exposed. The result is null for failed, cancelled, or expired jobs.
+
+Cancellation is cooperative. Queued work stops immediately; an in-flight metadata
+request, download, or file check must finish or reach its existing timeout first.
+While that happens, the job remains `running` with `cancellation_requested: true`.
+No further operation starts after the worker observes cancellation. Verified
+metadata and completed checks are saved when a checkpoint observes cancellation
+or expiry, without renewing metadata age. Saving can fail; a later request may
+repeat work. Cancelling during a failed metadata request creates no empty cache.
+
+A **120-second soft budget** includes waiting for the shared search lock and
+FITS download admission. Checkpoints enforce it between blocking operations; it
+does not interrupt an operation already running. Existing per-pass checks and
+transfer budgets still apply. The original synchronous endpoint keeps its
+existing behavior and returns **409** if the shared search lock is occupied.
+Cached image requests, health checks, and job polling can proceed during a slow
+archive request. Shutdown cancels queued work in both background workers and
+waits for their current operations to stop.
+
+This is a local background wrapper around the existing synchronous IRSA TAP
+query, not IRSA's remote asynchronous TAP/UWS interface. It prevents callers
+from holding a long HTTP request open; it does **not** fix upstream availability,
+raise the metadata timeout, or establish reliable live archive discovery.
+
+A live local check on 2026-11-14 returned HTTP 202 in 0.04 seconds, kept health
+and polling responsive during metadata retrieval, and finished cooperative
+cancellation after 28.92 seconds. A subsequent cache-only job reused that real
+metadata, verified one cached observation among two candidates, and made zero
+new downloads. Its result remained partial and truncated, with no matched pair;
+this validates job handling and recovery, not a complete live matching workflow.
+
 ## FITS retrieval and parsing
 
 The internal `FitsStore` service downloads target-centred cutouts from direct
@@ -601,5 +676,5 @@ The spatial predicate and plane/artifact join follow the
 [official IRSA SPHEREx cutout tutorial](https://github.com/Caltech-IPAC/irsa-tutorials/blob/main/tutorials/spherex/spherex_cutouts.md).
 [IRSA's TAP documentation](https://irsa.ipac.caltech.edu/docs/program_interface/TAP.html)
 describes both synchronous and asynchronous query modes. Slow metadata discovery
-would need a separately scoped background/resumable workflow; increasing the
+now has the local background/resumable workflow described above. Increasing the
 synchronous timeout alone would not establish reliable live availability.

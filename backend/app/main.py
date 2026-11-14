@@ -20,6 +20,7 @@ from app.routers.resolve import router as resolve_router
 from app.routers.spectrum import router as spectrum_router
 from app.services.cache_jobs import CacheJobs
 from app.services.cache_policy import DEFAULT_IDLE_SECONDS, DEFAULT_QUOTA_BYTES
+from app.services.comparison_jobs import ComparisonJobs
 from app.services.fits_download import FitsStore
 from app.services.fits_parser import MAX_FILE_BYTES
 
@@ -80,9 +81,19 @@ async def lifespan(application: FastAPI):
     application.state.cache.purge_expired()
     application.state.cache_jobs = CacheJobs(application.state.fits_store)
     try:
+        application.state.comparison_jobs = ComparisonJobs(
+            application.state.cache, application.state.fits_store
+        )
+    except BaseException:
+        await asyncio.to_thread(application.state.cache_jobs.close)
+        raise
+    try:
         yield
     finally:
-        await asyncio.to_thread(application.state.cache_jobs.close)
+        await asyncio.gather(
+            asyncio.to_thread(application.state.comparison_jobs.close),
+            asyncio.to_thread(application.state.cache_jobs.close),
+        )
 
 
 def create_app() -> FastAPI:
