@@ -5,12 +5,18 @@ import math
 import os
 import tempfile
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlencode, urlsplit
 
 import requests
 
+from app.services.cache_policy import (
+    DEFAULT_IDLE_SECONDS,
+    DEFAULT_QUOTA_BYTES,
+    FitsCachePolicy,
+)
 from app.services.fits_parser import MAX_FILE_BYTES, InvalidFitsError, open_observation
 from app.services.observations import PRODUCT_NAME
 
@@ -65,11 +71,39 @@ def cutout_url(access_url: str, ra: float, dec: float, size_deg: float) -> str:
 class FitsStore:
     """Use a dedicated runtime directory, never a source-controlled data bundle."""
 
-    def __init__(self, directory: str | Path, max_bytes: int = MAX_FILE_BYTES):
-        if not 0 < max_bytes <= MAX_FILE_BYTES:
+    def __init__(
+        self,
+        directory: str | Path,
+        max_bytes: int = MAX_FILE_BYTES,
+        quota_bytes: int = DEFAULT_QUOTA_BYTES,
+        idle_seconds: int = DEFAULT_IDLE_SECONDS,
+    ):
+        if (
+            isinstance(max_bytes, bool)
+            or not isinstance(max_bytes, int)
+            or not 0 < max_bytes <= MAX_FILE_BYTES
+        ):
             raise ValueError("Invalid per-file byte limit")
-        self.directory = Path(directory)
+        if quota_bytes < max_bytes:
+            raise ValueError(
+                "FITS cache quota must accommodate the per-file byte limit"
+            )
+        self.policy = FitsCachePolicy(directory, quota_bytes, idle_seconds)
+        self.directory = self.policy.directory
         self.max_bytes = max_bytes
+
+    @contextmanager
+    def lease(self, access_url: str, ra: float, dec: float, size_deg: float = 0.03):
+        request_url = cutout_url(access_url, ra, dec, size_deg)
+        key = hashlib.sha256(request_url.encode()).hexdigest()
+        with self.policy.lease(self.directory / f"{key}.fits"):
+            yield
+
+    def cleanup(self):
+        return self.policy.cleanup()
+
+    def status(self):
+        return {**self.policy.status(), "max_file_bytes": self.max_bytes}
 
     def get_cached(
         self, access_url: str, ra: float, dec: float, size_deg: float = 0.03
@@ -79,22 +113,35 @@ class FitsStore:
         key = hashlib.sha256(request_url.encode()).hexdigest()
         path = self.directory / f"{key}.fits"
         try:
-            if path.is_file() and path.stat().st_size <= self.max_bytes:
-                with open_observation(path) as observation:
-                    observation.target_pixel(ra, dec)
-                    return RetrievedFits(path, request_url, True, path.stat().st_size)
+            with self.policy.state.lock:
+                self.policy.validate_path(path)
+                if path.is_file() and path.stat().st_size <= self.max_bytes:
+                    with open_observation(path) as observation:
+                        observation.target_pixel(ra, dec)
+                        self.policy.touch(path)
+                        return RetrievedFits(
+                            path, request_url, True, path.stat().st_size
+                        )
         except (InvalidFitsError, OSError):
             pass
         return None
 
     def fetch(self, access_url: str, ra: float, dec: float, size_deg: float = 0.03):
-        cached = self.get_cached(access_url, ra, dec, size_deg)
-        if cached is not None:
-            return cached
+        with self.lease(access_url, ra, dec, size_deg):
+            cached = self.get_cached(access_url, ra, dec, size_deg)
+            if cached is not None:
+                return cached
+            with self.policy.state.writer:
+                cached = self.get_cached(access_url, ra, dec, size_deg)
+                if cached is not None:
+                    return cached
+                self.policy.make_room(self.max_bytes)
+                return self._download(access_url, ra, dec, size_deg)
+
+    def _download(self, access_url, ra, dec, size_deg):
         request_url = cutout_url(access_url, ra, dec, size_deg)
         key = hashlib.sha256(request_url.encode()).hexdigest()
         path = self.directory / f"{key}.fits"
-        self.directory.mkdir(parents=True, exist_ok=True)
         temporary = None
         try:
             with requests.get(
@@ -111,6 +158,8 @@ class FitsStore:
                     prefix=f".{key}.", suffix=".part", dir=self.directory
                 )
                 temporary = Path(name)
+                with self.policy.state.lock:
+                    self.policy.state.active_parts.add(temporary)
                 count = 0
                 start = time.monotonic()
                 with os.fdopen(descriptor, "wb") as output:
@@ -134,7 +183,10 @@ class FitsStore:
                         )
             with open_observation(temporary) as observation:
                 observation.target_pixel(ra, dec)
-            os.replace(temporary, path)
+            with self.policy.state.lock:
+                self.policy.validate_path(temporary)
+                self.policy.validate_path(path)
+                os.replace(temporary, path)
             return RetrievedFits(path, request_url, False, count)
         except InvalidFitsError as error:
             raise FitsContentError("Archive calibration is unusable") from error
@@ -144,4 +196,7 @@ class FitsStore:
             ) from error
         finally:
             if temporary is not None:
-                temporary.unlink(missing_ok=True)
+                with self.policy.state.lock:
+                    self.policy.state.active_parts.discard(temporary)
+                    self.policy.validate_path(temporary)
+                    temporary.unlink(missing_ok=True)

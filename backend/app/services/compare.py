@@ -186,111 +186,133 @@ def _display_pair(a, b, mask, stretch):
 
 def prepare_comparison(request: CompareRequest, store: FitsStore) -> CompareResponse:
     identities = validate_pair(request)
-    retrieved_a = store.fetch(
-        request.access_url_a, request.ra, request.dec, request.size_deg
-    )
-    # Extra B sky coverage accommodates rotation; A remains the sole reference grid.
     b_size = min(0.5, request.size_deg * math.sqrt(2) + 0.01)
-    retrieved_b = store.fetch(request.access_url_b, request.ra, request.dec, b_size)
     with (
-        open_observation(retrieved_a.path) as a,
-        open_observation(retrieved_b.path) as b,
+        store.lease(request.access_url_a, request.ra, request.dec, request.size_deg),
+        store.lease(request.access_url_b, request.ra, request.dec, b_size),
     ):
-        if (
-            max(a.image.shape) > MAX_REFERENCE_AXIS
-            or max(b.image.shape) > MAX_INPUT_AXIS
+        retrieved_a = store.fetch(
+            request.access_url_a, request.ra, request.dec, request.size_deg
+        )
+        retrieved_b = store.fetch(request.access_url_b, request.ra, request.dec, b_size)
+        with (
+            open_observation(retrieved_a.path) as a,
+            open_observation(retrieved_b.path) as b,
         ):
-            raise InvalidFitsError("Comparison exceeds bounded image dimensions")
-        epoch_a = read_epoch(
-            a, retrieved_a, request.access_url_a, identities[0], request.ra, request.dec
-        )
-        epoch_b = read_epoch(
-            b, retrieved_b, request.access_url_b, identities[1], request.ra, request.dec
-        )
-        image_a, wave_a, band_a, valid_a = calibrated_planes(a)
-        image_b, wave_b, band_b, valid_b = calibrated_planes(b)
-        try:
-            projected, footprint = reproject_interp(
-                (np.where(valid_b, image_b, np.nan), b.spatial_wcs),
-                a.spatial_wcs,
-                shape_out=a.image.shape,
-                order="bilinear",
-                roundtrip_coords=True,
+            if (
+                max(a.image.shape) > MAX_REFERENCE_AXIS
+                or max(b.image.shape) > MAX_INPUT_AXIS
+            ):
+                raise InvalidFitsError("Comparison exceeds bounded image dimensions")
+            epoch_a = read_epoch(
+                a,
+                retrieved_a,
+                request.access_url_a,
+                identities[0],
+                request.ra,
+                request.dec,
             )
-        except ValueError as error:
-            raise InvalidFitsError(
-                "The common image grid could not be prepared"
-            ) from error
-        coverage, usable = _common_masks(
-            a, b, wave_a, band_a, valid_a, wave_b, band_b, valid_b, projected, footprint
-        )
-        target_match = bool(
-            matching_wavelengths(
-                epoch_a.target_wavelength_um,
-                epoch_b.target_wavelength_um,
-                epoch_a.target_bandwidth_um,
-                epoch_b.target_bandwidth_um,
+            epoch_b = read_epoch(
+                b,
+                retrieved_b,
+                request.access_url_b,
+                identities[1],
+                request.ra,
+                request.dec,
             )
-        )
-        date_a = Time(epoch_a.utc_date, format="isot", scale="utc")
-        date_b = Time(epoch_b.utc_date, format="isot", scale="utc")
-        baseline = abs(float((date_b - date_a).to_value(u.day)))
-        x, y = a.target_pixel(request.ra, request.dec)
-        ix, iy = math.floor(x + 0.5), math.floor(y + 0.5)
-        count, common = int(usable.sum()), int(coverage.sum())
-        if baseline == 0:
-            status, message = (
-                "no_time_baseline",
-                "Choose observations taken at different times.",
+            image_a, wave_a, band_a, valid_a = calibrated_planes(a)
+            image_b, wave_b, band_b, valid_b = calibrated_planes(b)
+            try:
+                projected, footprint = reproject_interp(
+                    (np.where(valid_b, image_b, np.nan), b.spatial_wcs),
+                    a.spatial_wcs,
+                    shape_out=a.image.shape,
+                    order="bilinear",
+                    roundtrip_coords=True,
+                )
+            except ValueError as error:
+                raise InvalidFitsError(
+                    "The common image grid could not be prepared"
+                ) from error
+            coverage, usable = _common_masks(
+                a,
+                b,
+                wave_a,
+                band_a,
+                valid_a,
+                wave_b,
+                band_b,
+                valid_b,
+                projected,
+                footprint,
             )
-        elif not target_match:
-            status, message = (
-                "incompatible_wavelength",
-                "Target wavelengths do not match within the channel-width rule.",
+            target_match = bool(
+                matching_wavelengths(
+                    epoch_a.target_wavelength_um,
+                    epoch_b.target_wavelength_um,
+                    epoch_a.target_bandwidth_um,
+                    epoch_b.target_bandwidth_um,
+                )
             )
-        elif common == 0:
-            status, message = (
-                "no_usable_overlap",
-                "No common quality-screened pixels remain.",
+            date_a = Time(epoch_a.utc_date, format="isot", scale="utc")
+            date_b = Time(epoch_b.utc_date, format="isot", scale="utc")
+            baseline = abs(float((date_b - date_a).to_value(u.day)))
+            x, y = a.target_pixel(request.ra, request.dec)
+            ix, iy = math.floor(x + 0.5), math.floor(y + 0.5)
+            count, common = int(usable.sum()), int(coverage.sum())
+            if baseline == 0:
+                status, message = (
+                    "no_time_baseline",
+                    "Choose observations taken at different times.",
+                )
+            elif not target_match:
+                status, message = (
+                    "incompatible_wavelength",
+                    "Target wavelengths do not match within the channel-width rule.",
+                )
+            elif common == 0:
+                status, message = (
+                    "no_usable_overlap",
+                    "No common quality-screened pixels remain.",
+                )
+            elif count < MIN_MATCHED_PIXELS or not usable[iy, ix]:
+                status, message = (
+                    "insufficient_coverage",
+                    "The target and at least 16 common pixels must pass all checks.",
+                )
+            else:
+                status, message = (
+                    "ready",
+                    "Ready for visual blink on the matched-pixel mask.",
+                )
+            ready = status == "ready"
+            pixels_a, pixels_b, low, high = [], [], None, None
+            if ready:
+                pixels_a, pixels_b, low, high = _display_pair(
+                    image_a, projected, usable, request.stretch
+                )
+            height, width = a.image.shape
+            return CompareResponse(
+                status=status,
+                message=message,
+                epoch_a=epoch_a,
+                epoch_b=epoch_b,
+                width=width,
+                height=height,
+                blink_ready=ready,
+                target_wavelength_match=target_match,
+                baseline_days=baseline,
+                coverage_pixel_count=common,
+                matched_pixel_count=count,
+                matched_fraction=count / (width * height),
+                coverage_mask=coverage.ravel().tolist(),
+                valid_mask=usable.ravel().tolist(),
+                pixels_a=pixels_a,
+                pixels_b=pixels_b,
+                display_min_mjy_sr=low,
+                display_max_mjy_sr=high,
+                stretch_applied=request.stretch,
+                spatial_wcs_header=a.spatial_wcs.to_header(relax=True).tostring(
+                    sep="\n", endcard=True, padding=False
+                ),
             )
-        elif count < MIN_MATCHED_PIXELS or not usable[iy, ix]:
-            status, message = (
-                "insufficient_coverage",
-                "The target and at least 16 common pixels must pass all checks.",
-            )
-        else:
-            status, message = (
-                "ready",
-                "Ready for visual blink on the matched-pixel mask.",
-            )
-        ready = status == "ready"
-        pixels_a, pixels_b, low, high = [], [], None, None
-        if ready:
-            pixels_a, pixels_b, low, high = _display_pair(
-                image_a, projected, usable, request.stretch
-            )
-        height, width = a.image.shape
-        return CompareResponse(
-            status=status,
-            message=message,
-            epoch_a=epoch_a,
-            epoch_b=epoch_b,
-            width=width,
-            height=height,
-            blink_ready=ready,
-            target_wavelength_match=target_match,
-            baseline_days=baseline,
-            coverage_pixel_count=common,
-            matched_pixel_count=count,
-            matched_fraction=count / (width * height),
-            coverage_mask=coverage.ravel().tolist(),
-            valid_mask=usable.ravel().tolist(),
-            pixels_a=pixels_a,
-            pixels_b=pixels_b,
-            display_min_mjy_sr=low,
-            display_max_mjy_sr=high,
-            stretch_applied=request.stretch,
-            spatial_wcs_header=a.spatial_wcs.to_header(relax=True).tostring(
-                sep="\n", endcard=True, padding=False
-            ),
-        )

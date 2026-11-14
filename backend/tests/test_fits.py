@@ -202,7 +202,8 @@ def test_interrupted_download_is_cleaned_up(mef, tmp_path, monkeypatch):
     store = download.FitsStore(tmp_path / "cache")
     with pytest.raises(download.FitsDownloadError):
         store.fetch(URL, 100.0, 20.0)
-    assert not list(store.directory.iterdir())
+    assert not list(store.directory.glob("*.fits"))
+    assert not list(store.directory.glob("*.part"))
 
 
 def test_invalid_cache_is_rebuilt_atomically(mef, tmp_path, monkeypatch):
@@ -257,7 +258,8 @@ def test_returned_image_must_cover_requested_target(mef, tmp_path, monkeypatch):
     store = download.FitsStore(tmp_path / "cache")
     with pytest.raises(download.FitsDownloadError):
         store.fetch(URL, 200.0, -20.0)
-    assert not list(store.directory.iterdir())
+    assert not list(store.directory.glob("*.fits"))
+    assert not list(store.directory.glob("*.part"))
 
 
 def test_target_location_uses_spatial_sip_then_spectral_lookup(mef):

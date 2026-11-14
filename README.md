@@ -414,10 +414,11 @@ from app.services.fits_parser import open_observation
 
 # access_url comes from an actual /api/observations response.
 store = FitsStore("cache/fits")
-result = store.fetch(access_url, ra=ra_deg, dec=dec_deg, size_deg=0.03)
-with open_observation(result.path) as observation:
-    x, y = observation.target_pixel(ra_deg, dec_deg)
-    wavelength_um, channel_width_um = observation.wavelength_at(x, y)
+with store.lease(access_url, ra_deg, dec_deg, 0.03):
+    result = store.fetch(access_url, ra=ra_deg, dec=dec_deg, size_deg=0.03)
+    with open_observation(result.path) as observation:
+        x, y = observation.target_pixel(ra_deg, dec_deg)
+        wavelength_um, channel_width_um = observation.wavelength_at(x, y)
 ```
 
 The parser retains the science image, integer quality flags, variance, zodiacal
@@ -440,8 +441,8 @@ greater than zero and at most 1.5 degrees. Connections have a 5-second connect a
 chunks; an in-progress read can still run until its read timeout.
 Validated files are published atomically to the runtime cache; failed temporary
 downloads are removed. Cache identity includes the exact URL, target, and width.
-There is no sample fallback, automatic retry, background download, or total disk
-quota yet. The API uses `backend/cache/fits` by default (alongside the metadata database),
+There is no sample fallback, automatic retry, or background download.
+The API uses `backend/cache/fits` by default (alongside the metadata database),
 or `FITS_CACHE_DIR` when supplied. Source data stays out of Git.
 
 ## Local cache
@@ -451,13 +452,50 @@ startup. Set `CACHE_DB_PATH` to use another writable filesystem path.
 Importing the application does not create a database or make archive requests.
 
 The internal cache stores JSON metadata with separate namespaces and optional
-expiry. Expired entries are never returned; internal callers can remove them
-with `purge_expired()`. Runtime cache failures return a miss or failed write.
+expiry. Expired entries are never returned; startup removes expired rows, and
+internal callers can use `purge_expired()`. Runtime cache failures return a miss or failed write.
 Invalid storage configuration fails visibly at startup.
 
-There are no public cache-management endpoints or background downloads.
+FITS payloads have a default **512 MiB** budget, separate from the SQLite database.
+Configuration values are integer bytes or seconds:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `FITS_CACHE_MAX_BYTES` | `536870912` | Total managed FITS and temporary payload budget |
+| `FITS_CACHE_MAX_FILE_BYTES` | `134217728` | Per-download limit; must fit inside the total budget and cannot exceed 128 MiB |
+| `FITS_CACHE_MAX_IDLE_SECONDS` | `604800` | Remove unused FITS payloads after seven days; `0` disables idle expiry |
+
+Cleanup runs at startup and before admitting a new download. Unused files expire
+by filesystem last-use time, not their astronomical observation date. Remaining
+files are evicted oldest-use first when space is needed. Orphan temporary files
+expire after one hour; fresh partial files and active requests are protected.
+The image, spectrum, comparison, sequence, and date-search services hold leases
+through file processing. Internal callers must likewise keep `store.lease(...)`
+open until they finish using the returned path.
+
+New downloads are serialized per cache directory. Each reserves space for its
+full per-file limit before contacting the archive, so admission may fail even
+when the eventual file would have been smaller. If active files or fresh partials
+prevent enough space from being freed, the request fails without downloading.
+Existing cached reads can continue while another file downloads. Storage failures
+are reported as unavailable responses; data is never fabricated to fill a miss.
+
+Use **one backend worker**, with no other process sharing the FITS directory.
+Leases and admission locks are process-local; this is not a multi-process quota.
+Cleanup is triggered by startup or new download admission, not a scheduled job.
+
+Cleanup only handles regular, single-link files with the application's exact
+hash-based FITS or temporary names, in a dedicated directory marked
+`.aurax-fits-cache`. An existing directory can be adopted only if all entries
+match those managed names. Symlink roots are rejected. Unrelated files,
+subdirectories, symlinks, and hard links are preserved and excluded from the
+payload quota; do not put source data in this runtime directory.
+
+`GET /api/cache/status` reports configured limits, managed byte/file counts,
+active downloads, protected files, and whether the directory is over quota.
+It is read-only, exposes no local paths, and does not trigger cleanup or downloads.
+There is no public cleanup endpoint or background download worker.
 Cache files are ignored by Git; no observation data or seed database is included.
-The cache does not yet impose a disk quota; bounded background caching comes later.
 
 ## Verify
 

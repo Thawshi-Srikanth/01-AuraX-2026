@@ -63,6 +63,7 @@ def prepare_sequence(request: SequenceRequest, store: FitsStore) -> SequenceResp
         reference = None
         for index, (url, identity) in enumerate(zip(request.access_urls, identities)):
             size = request.size_deg if index == 0 else secondary_size
+            stack.enter_context(store.lease(url, request.ra, request.dec, size))
             retrieved = store.fetch(url, request.ra, request.dec, size)
             data = stack.enter_context(open_observation(retrieved.path))
             limit = MAX_REFERENCE_AXIS if index == 0 else MAX_INPUT_AXIS

@@ -173,19 +173,20 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore):
         inspections += 1
         state.next_candidate_index = (index + 1) % len(products)
         try:
-            retrieved = store.get_cached(
-                product.access_url, request.ra, request.dec, 0.03
-            )
-            if retrieved is None:
-                if not request.advance or downloads >= MAX_NEW_DOWNLOADS:
-                    continue
-                downloads += 1
-                retrieved = store.fetch(
+            with store.lease(product.access_url, request.ra, request.dec, 0.03):
+                retrieved = store.get_cached(
                     product.access_url, request.ra, request.dec, 0.03
                 )
-            else:
-                local_checks += 1
-            check = _inspect(product, retrieved, request)
+                if retrieved is None:
+                    if not request.advance or downloads >= MAX_NEW_DOWNLOADS:
+                        continue
+                    downloads += 1
+                    retrieved = store.fetch(
+                        product.access_url, request.ra, request.dec, 0.03
+                    )
+                else:
+                    local_checks += 1
+                check = _inspect(product, retrieved, request)
         except (FitsContentError, InvalidFitsError, ValueError):
             check = ObservationCheck(
                 artifact_id=product.artifact_id,

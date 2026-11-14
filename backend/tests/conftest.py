@@ -10,6 +10,12 @@ from astropy.wcs import WCS, Sip
 def isolated_cache(monkeypatch, tmp_path):
     monkeypatch.setenv("CACHE_DB_PATH", str(tmp_path / "cache" / "test.db"))
     monkeypatch.setenv("FITS_CACHE_DIR", str(tmp_path / "cache" / "fits"))
+    for name in [
+        "FITS_CACHE_MAX_BYTES",
+        "FITS_CACHE_MAX_FILE_BYTES",
+        "FITS_CACHE_MAX_IDLE_SECONDS",
+    ]:
+        monkeypatch.delenv(name, raising=False)
 
 
 @pytest.fixture

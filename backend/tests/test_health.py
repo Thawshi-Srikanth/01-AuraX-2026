@@ -27,6 +27,7 @@ def test_health_and_api_contract(monkeypatch):
             "/api/compare",
             "/api/compare/matches",
             "/api/compare/sequence",
+            "/api/cache/status",
         }
         assert client.get("/api/observations").status_code == 422
 

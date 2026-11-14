@@ -14,53 +14,56 @@ from app.services.quality import usable_pixels
 
 
 def _sample(observation, product, ra, dec, store):
-    retrieved = store.fetch(product.access_url, ra, dec, 0.03)
-    with open_observation(retrieved.path) as data:
-        x, y = data.target_pixel(ra, dec)
-        ix, iy = math.floor(x + 0.5), math.floor(y + 0.5)
-        flux = float((data.image[iy, ix] * data.image_unit).to_value(u.MJy / u.sr))
-        variance = float(
-            (data.variance[iy, ix] * data.variance_unit).to_value((u.MJy / u.sr) ** 2)
-        )
-        flags = int(data.flags[iy, ix])
-        if not bool(usable_pixels(flux, variance, flags)):
-            return ExcludedObservation(
-                **observation,
-                reason="unusable_pixel",
+    with store.lease(product.access_url, ra, dec, 0.03):
+        retrieved = store.fetch(product.access_url, ra, dec, 0.03)
+        with open_observation(retrieved.path) as data:
+            x, y = data.target_pixel(ra, dec)
+            ix, iy = math.floor(x + 0.5), math.floor(y + 0.5)
+            flux = float((data.image[iy, ix] * data.image_unit).to_value(u.MJy / u.sr))
+            variance = float(
+                (data.variance[iy, ix] * data.variance_unit).to_value(
+                    (u.MJy / u.sr) ** 2
+                )
+            )
+            flags = int(data.flags[iy, ix])
+            if not bool(usable_pixels(flux, variance, flags)):
+                return ExcludedObservation(
+                    **observation,
+                    reason="unusable_pixel",
+                    pixel_x=ix,
+                    pixel_y=iy,
+                    flags=flags,
+                )
+            # Match the wavelength to the same pixel that supplied the measurement.
+            wave, bandwidth = data.wavelength_at(ix, iy)
+            sigma = math.sqrt(variance)
+            snr = flux / sigma if sigma > 0 else None
+            if snr is not None and not math.isfinite(snr):
+                snr = None
+            target = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
+            pixel_sky = data.spatial_wcs.pixel_to_world(ix, iy)
+            return SpectralPoint(
+                artifact_id=product.artifact_id,
+                obs_id=product.obs_id,
+                detector=product.detector,
+                utc_date=product.utc_date,
+                mjd_start=product.mjd_start,
+                processing_version=product.processing_version,
+                source_url=retrieved.request_url,
+                cached_fits=retrieved.cached,
                 pixel_x=ix,
                 pixel_y=iy,
+                target_x=x,
+                target_y=y,
+                sample_offset_arcsec=float(target.separation(pixel_sky).arcsec),
+                wavelength_um=wave,
+                bandwidth_um=bandwidth,
+                resolving_power=wave / bandwidth,
+                flux_mjy_sr=flux,
+                flux_error_mjy_sr=sigma,
+                snr=snr,
                 flags=flags,
             )
-        # Match the wavelength to the same pixel that supplied the measurement.
-        wave, bandwidth = data.wavelength_at(ix, iy)
-        sigma = math.sqrt(variance)
-        snr = flux / sigma if sigma > 0 else None
-        if snr is not None and not math.isfinite(snr):
-            snr = None
-        target = SkyCoord(ra=ra * u.deg, dec=dec * u.deg, frame="icrs")
-        pixel_sky = data.spatial_wcs.pixel_to_world(ix, iy)
-        return SpectralPoint(
-            artifact_id=product.artifact_id,
-            obs_id=product.obs_id,
-            detector=product.detector,
-            utc_date=product.utc_date,
-            mjd_start=product.mjd_start,
-            processing_version=product.processing_version,
-            source_url=retrieved.request_url,
-            cached_fits=retrieved.cached,
-            pixel_x=ix,
-            pixel_y=iy,
-            target_x=x,
-            target_y=y,
-            sample_offset_arcsec=float(target.separation(pixel_sky).arcsec),
-            wavelength_um=wave,
-            bandwidth_um=bandwidth,
-            resolving_power=wave / bandwidth,
-            flux_mjy_sr=flux,
-            flux_error_mjy_sr=sigma,
-            snr=snr,
-            flags=flags,
-        )
 
 
 def extract_spectrum(
