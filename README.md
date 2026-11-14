@@ -23,8 +23,8 @@ This repository is being built progressively, starting with the backend.
 
 The frontend currently provides a branded workspace shell, validated navigation
 and session restoration, a real backend connection check, and target search by
-name or ICRS coordinates. The image viewer and remaining science views have not
-yet been migrated.
+name or ICRS coordinates, plus the copied Explore sky map. The image viewer and
+remaining science views have not yet been migrated.
 
 ## Run the backend
 
@@ -111,6 +111,20 @@ an unverified position until another lookup, rather than restoring a catalog mat
 from user-editable storage. No proper-motion propagation is performed. Live browser
 checks verified a real Barnard's Star lookup and manual-coordinate validation;
 external SIMBAD availability is still independent of backend health.
+
+Explore now uses the existing application's `SkyMapView` renderer, controls,
+star/constellation files, and local `noirlab_galactic_4k.jpg` background. Its
+original 3D/flat projections, pan/zoom/reset, and layer toggles are retained.
+The copied map uses the original Tailwind configuration and icon dependency.
+No replacement atlas service or Aladin dependency is included.
+
+Static footprints, including a generated target-field rectangle, are illustrative
+legacy overlays and are explicitly labelled as such; they are not queried or
+verified SPHEREx observations or exposure coverage. The photo is a reference
+background, not calibrated SPHEREx imagery. Selecting **Observe** validates the
+position through the real coordinate resolver and opens the Observations route.
+Failure shows an error instead of constructing a catalog identity or epoch.
+The Observations tools themselves are a later migration chunk.
 
 Verify the frontend from `frontend/`:
 

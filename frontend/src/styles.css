@@ -1,4 +1,5 @@
 @import './tokens.css';
+@tailwind utilities;
 
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; background: var(--bg-app); color: var(--text-primary); font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; }
@@ -65,3 +66,6 @@ footer p { margin: 0; line-height: 1.6; }
 .target-position strong { font-size: 16px; font-weight: 500; }
 .target-position a { display: inline-block; text-decoration: underline; text-underline-offset: 3px; margin-top: 6px; }
 @media (max-width: 480px) { .coordinate-fields { grid-template-columns: 1fr; } .target-search { margin: 32px auto; } }
+
+.legacy-explore { margin-top: 16px; }
+.legacy-map { height: min(70dvh, 720px); min-height: 420px; position: relative; }

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { fetchHealth } from './services/api';
 import type { TargetResult } from './services/api';
 import { TargetSearch } from './components/TargetSearch';
+import { SkyMapView } from './components/SkyMapView';
 import { views, routeUrl } from './navigation/session';
 import { useNavigation } from './navigation/useNavigation';
 
@@ -86,6 +87,14 @@ export function App() {
           </section>
         )}
         {route.view === 'home' && !route.error ? <TargetSearch target={route.target} onSelect={select} /> :
+        route.view === 'explore' && !route.error ? <section className="legacy-explore" aria-label="Explore sky map">
+          <p className="field-hint">Legacy reference sky. Static footprint overlays are illustrative, not verified archive coverage.</p>
+          <div className="legacy-map"><SkyMapView
+            activeTarget={route.target ? { canonical_name: selected?.canonical_name || 'Selected position', coordinates: { ra_deg: route.target.ra, dec_deg: route.target.dec, frame: 'ICRS', epoch: null }, object_type: 'Coordinate Location', provenance: 'Coordinates only', source_url: null, coordinate_reference: null, retrieved_at: null, cached: false } : undefined}
+            onTargetResolved={(result) => { setResolved(result); selectTarget({ ra: result.coordinates.ra_deg, dec: result.coordinates.dec_deg }, 'observations'); }}
+            onNavigate={() => undefined}
+          /></div>
+        </section> :
         <section className="empty-workspace" aria-labelledby="empty-heading">
           <div>
             {route.error ? <>
