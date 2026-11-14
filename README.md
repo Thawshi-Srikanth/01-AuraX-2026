@@ -104,9 +104,12 @@ The displayed date and locally calibrated wavelength belong to the displayed ima
 These individual exposures may have different passbands and sky grids; brightness
 changes alone do not establish variability or motion.
 
-Excluded/nonfinite pixels show a labeled checkerboard in the FITS viewer. Valid
-low-brightness and zero-valued pixels keep their actual display values; no data is
-filled or interpolated. Source markers use full-SIP reference positions. Clicking
+The FITS viewer shows finite IMAGE values for visual context, including pixels
+carrying artifact warnings such as CROSSTALK. Their original flags remain visible
+as warnings and the stricter analysis mask still excludes them from measurements.
+NONFUNC, DICHROIC, MISSING_DATA and nonfinite image pixels show a labeled
+checkerboard. Valid low-brightness and zero-valued display pixels remain unchanged;
+no data is filled or interpolated. Source markers use full-SIP reference positions. Clicking
 a nearby catalog name selects and centers that exact reference position in the
 current image, with a separate link for catalog details. Sources outside the image
 are reported without substituting another position. Shared coordinates are shown
@@ -234,9 +237,11 @@ to 512 pixels per axis; oversized responses return HTTP 413.
 - `pixels`: display values in [0, 1], with nulls for unusable pixels.
 - `raw_flux`: un-stretched surface brightness in MJy/sr, including finite flagged values.
 - `variance`: physical variance in (MJy/sr)^2, with squared unit conversion.
-- `flags`: original integer bitmasks; `valid_pixels` records the display mask.
+- `flags`: original integer bitmasks; `valid_pixels` records the strict analysis mask.
+- `display_valid_pixels`: finite, displayable image data; warnings remain visible.
+- `display_warning_pixel_count`: displayed pixels excluded from measurements.
 
-Nonfinite values are null, not zero. Display masks exclude nonfinite image data,
+Nonfinite values are null, not zero. Analysis masks exclude nonfinite image data,
 nonfinite or negative variance, and quality bits other than SOURCE (21) and
 FULLSAMPLE (12). This is a conservative display policy, not a certification for
 photometry. Available flag definitions are carried from the FITS header.

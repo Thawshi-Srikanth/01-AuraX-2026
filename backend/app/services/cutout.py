@@ -10,7 +10,12 @@ from astropy.visualization import LogStretch, ZScaleInterval
 from app.schemas.cutout import CutoutResponse
 from app.services.fits_download import FitsStore
 from app.services.fits_parser import open_observation
-from app.services.quality import INFORMATIONAL_FLAGS, usable_pixels
+from app.services.quality import (
+    DISPLAY_UNUSABLE_FLAGS,
+    INFORMATIONAL_FLAGS,
+    displayable_pixels,
+    usable_pixels,
+)
 
 MAX_RESPONSE_AXIS = 512
 
@@ -47,6 +52,8 @@ def image_cutout(
             )
             valid = usable_pixels(image, variance, observation.flags)
             usable = image[valid].astype(np.float64)
+            visible = displayable_pixels(image, observation.flags)
+            visual_values = image[visible].astype(np.float64)
             display = np.full(image.shape, np.nan, dtype=np.float64)
             low = high = minimum = maximum = mean = None
             if usable.size:
@@ -55,20 +62,24 @@ def image_cutout(
                     float(np.max(usable)),
                     float(np.mean(usable)),
                 )
+            if visual_values.size:
                 if stretch == "zscale":
                     low, high = (
-                        float(value) for value in ZScaleInterval().get_limits(usable)
+                        float(value)
+                        for value in ZScaleInterval().get_limits(visual_values)
                     )
                 else:
-                    low, high = minimum, maximum
+                    low, high = (
+                        float(np.min(visual_values)),
+                        float(np.max(visual_values)),
+                    )
                 if high > low:
-                    values = np.clip((usable - low) / (high - low), 0.0, 1.0)
+                    values = np.clip((visual_values - low) / (high - low), 0.0, 1.0)
                     if stretch == "log":
                         values = LogStretch(a=1000)(values)
-                    display[valid] = values
+                    display[visible] = values
                 else:
-                    # A constant field has no contrast range; preserve the true limits.
-                    display[valid] = 0.5
+                    display[visible] = 0.5
             yy, xx = np.indices(image.shape)
             sky_ra, sky_dec = observation.spatial_wcs.pixel_to_world_values(xx, yy)
             north = SkyCoord(ra * u.deg, dec * u.deg).directional_offset_by(
@@ -90,6 +101,10 @@ def image_cutout(
                 variance=_json_values(variance),
                 flags=[int(value) for value in observation.flags.ravel()],
                 valid_pixels=valid.ravel().tolist(),
+                display_valid_pixels=visible.ravel().tolist(),
+                displayable_pixel_count=int(visible.sum()),
+                display_warning_pixel_count=int((visible & ~valid).sum()),
+                display_unusable_flag_mask=DISPLAY_UNUSABLE_FLAGS,
                 min_flux_mjy_sr=minimum,
                 max_flux_mjy_sr=maximum,
                 mean_flux_mjy_sr=mean,
@@ -121,8 +136,8 @@ def image_cutout(
                 cached_fits=retrieved.cached,
                 file_size_bytes=retrieved.size_bytes,
                 processing_version=observation.hdus[0].header.get("VERSION"),
-                status="success" if usable.size else "no_usable_pixels",
+                status="success" if visual_values.size else "no_usable_pixels",
                 message=None
-                if usable.size
-                else "No usable pixels remain after quality checks.",
+                if visual_values.size
+                else "No displayable image data remains.",
             )

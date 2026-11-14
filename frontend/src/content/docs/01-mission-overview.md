@@ -18,8 +18,9 @@ A sky-map background helps you navigate. It is not the selected SPHEREx exposure
 4. **Inspect the image.** Use Fit to see its full extent, then zoom and pan. Try another display stretch to reveal faint structure.
 5. **Read a pixel.** The brightness readout describes the calibrated measurement, while the display stretch controls its appearance.
 
-Checkerboard patches mark excluded or nonfinite pixels; valid dark pixels remain
-dark. They are different from missing data. In the Region inspector, click a nearby
+Checkerboard patches mark nonfinite or unusable detector/data pixels. Other
+quality-flagged brightness values remain visible with warnings but are excluded
+from measurements. Valid dark pixels remain dark; no missing values are filled. In the Region inspector, click a nearby
 catalog name to center its exact reference position. A record outside the current
 image is reported as outside; it does not select another source. Shared catalog
 positions remain unresolved associations.

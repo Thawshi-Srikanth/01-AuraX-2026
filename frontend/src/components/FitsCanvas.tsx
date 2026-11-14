@@ -760,14 +760,16 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
 
         const unit = cutout.bunit || 'MJy/sr';
         const hasCalibratedPixel = !!cutout.raw_flux && cutout.raw_flux.length > idx;
-        const formattedFlux = observationMode && !hasCalibratedPixel
+        const fluxValue = observationMode && !hasCalibratedPixel
           ? 'Unavailable at this image size'
-          : !Number.isFinite(rawFluxVal) || cutout.valid_pixels?.[idx] === false
-          ? 'NaN (Masked)'
+          : !Number.isFinite(rawFluxVal) || (cutout.display_valid_pixels ?? cutout.valid_pixels)?.[idx] === false
+          ? 'Unavailable (masked)'
           : Math.abs(rawFluxVal) < 0.001 && rawFluxVal !== 0
           ? `${rawFluxVal.toExponential(3)} ${unit}`
           : `${rawFluxVal.toFixed(4)} ${unit}`;
 
+        const formattedFlux = usableDisplayPixel(cutout, idx) && cutout.valid_pixels?.[idx] === false
+          ? fluxValue + ' · quality flagged; excluded from measurements' : fluxValue;
         if (hudFluxRef.current) {
           hudFluxRef.current.textContent = formattedFlux;
         }
@@ -1049,6 +1051,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
       </div>}
 
       {maskedPixels > 0 && !loading && <div className="absolute top-2 left-2 z-10 pointer-events-none bg-bg-surface/90 px-2 py-1 text-[10px] text-text-secondary">Checkerboard = excluded pixels ({maskedPixels})</div>}
+      {!!cutout?.display_warning_pixel_count && !loading && <div className="absolute top-9 left-2 z-10 max-w-[240px] pointer-events-none bg-bg-surface/90 px-2 py-1 text-[10px] text-text-secondary">{cutout.display_warning_pixel_count} quality-flagged pixels shown for context; excluded from measurements</div>}
       {/* Center Subtle Reticle */}
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
         <div className="w-24 h-[1px] bg-border-strong opacity-30 absolute" />

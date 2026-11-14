@@ -1,6 +1,6 @@
 import type { CutoutResponse } from '../services/api';
 export function usableDisplayPixel(cutout: CutoutResponse, index: number) {
-  return cutout.valid_pixels?.[index] !== false && Number.isFinite(cutout.pixels[index]);
+  return (cutout.display_valid_pixels ?? cutout.valid_pixels)?.[index] !== false && Number.isFinite(cutout.pixels[index]);
 }
 // Invalid data stays transparent so the explicit mask pattern can show through.
 // Valid zero is an opaque measurement at the colormap's true lower limit.

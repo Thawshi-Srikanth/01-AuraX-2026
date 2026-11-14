@@ -73,6 +73,8 @@ export interface CutoutResponse {
   pixels: number[];
   raw_flux?: number[];
   valid_pixels?: boolean[];
+  display_valid_pixels?: boolean[];
+  display_warning_pixel_count?: number;
   wavelength_um?: number;
   channel_width_um?: number;
   bunit?: string;
@@ -157,7 +159,7 @@ export async function fetchCutout(
   if (![data.pixels, data.raw_flux, data.valid_pixels].every(a => Array.isArray(a) && a.length === count)) throw new Error('Incomplete image arrays.');
   return {
     ...data,
-    pixels: data.pixels.map((v: number | null, i: number) => data.valid_pixels[i] && v !== null ? v : NaN),
+    pixels: data.pixels.map((v: number | null, i: number) => (data.display_valid_pixels ?? data.valid_pixels)[i] && v !== null ? v : NaN),
     raw_flux: data.raw_flux.map((v: number | null) => v ?? NaN),
     wcs: { crval1: null, crval2: null, crpix1: null, crpix2: null, cdelt1: null, cdelt2: null,
       cunit1: 'deg', cunit2: 'deg', ...data.wcs, spatial_wcs_header: data.spatial_wcs_header },

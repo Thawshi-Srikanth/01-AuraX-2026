@@ -17,7 +17,7 @@ function RegionPreview({ frame, position }: { frame: ObservationFrame; position:
     for (let y = 0; y < 25; y++) for (let x = 0; x < 25; x++) {
       const sx = ix + x - 12, sy = iy + y - 12;
       const index = sy * cutout.width + sx, offset = (y*25+x)*4;
-      if (sx < 0 || sy < 0 || sx >= cutout.width || sy >= cutout.height || cutout.valid_pixels?.[index] === false || !Number.isFinite(cutout.pixels[index])) continue;
+      if (sx < 0 || sy < 0 || sx >= cutout.width || sy >= cutout.height || (cutout.display_valid_pixels ?? cutout.valid_pixels)?.[index] === false || !Number.isFinite(cutout.pixels[index])) continue;
       const value = Math.round(Math.max(0, Math.min(1, cutout.pixels[index]))*255);
       image.data[offset] = image.data[offset+1] = image.data[offset+2] = value; image.data[offset+3] = 255;
     }

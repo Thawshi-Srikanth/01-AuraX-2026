@@ -82,7 +82,7 @@ def test_display_stretches_leave_physical_values_unchanged(client):
         assert min(values) >= 0 and max(values) <= 1
 
 
-def test_flagged_and_negative_variance_pixels_are_gaps_with_raw_values_preserved(
+def test_flagged_and_negative_variance_values_remain_visible_but_not_measurable(
     client, mef
 ):
     with fits.open(mef, mode="update", memmap=False) as hdus:
@@ -90,8 +90,11 @@ def test_flagged_and_negative_variance_pixels_are_gaps_with_raw_values_preserved
         hdus["VARIANCE"].data[1, 3] = -1
         hdus["FLAGS"].header["MSKN0021"] = "SOURCE"
     data = client.get("/api/cutout", params=PARAMS).json()
-    assert data["pixels"][18] is None and data["raw_flux"][18] == 18
-    assert data["pixels"][19] is None and data["variance"][19] == -1
+    assert data["pixels"][18] is not None and data["raw_flux"][18] == 18
+    assert data["display_valid_pixels"][18]
+    assert data["pixels"][19] is not None and data["variance"][19] == -1
+    assert data["display_valid_pixels"][19]
+    assert data["display_warning_pixel_count"] == 2
     assert not data["valid_pixels"][18] and not data["valid_pixels"][19]
     assert data["flags"][18] == 1
     assert data["masked_pixel_count"] == 3
@@ -118,7 +121,7 @@ def test_compatible_units_are_converted_with_correct_variance_scale(client, mef)
 
 def test_no_usable_pixels_has_no_fabricated_statistics(client, mef):
     with fits.open(mef, mode="update", memmap=False) as hdus:
-        hdus["FLAGS"].data[:] = 1
+        hdus["FLAGS"].data[:] = 1 << 6
     response = client.get("/api/cutout", params=PARAMS)
     assert response.status_code == 200
     data = response.json()
@@ -238,3 +241,43 @@ def test_sip_coordinate_grid_and_catalog_projection_roundtrip(client):
         "/api/catalog/project", json={"spatial_wcs_header": "invalid", "positions": []}
     )
     assert bad.status_code == 422
+
+
+def test_crosstalk_warning_does_not_remove_half_the_display(client, mef):
+    with fits.open(mef, mode="update", memmap=False) as hdus:
+        hdus["FLAGS"].data[:, :8] |= 1 << 20
+    data = client.get("/api/cutout", params=PARAMS).json()
+    assert data["displayable_pixel_count"] == 255
+    assert data["usable_pixel_count"] == 128
+    assert data["display_warning_pixel_count"] == 127
+    assert sum(value is not None for value in data["pixels"]) == 255
+    assert data["display_valid_pixels"][1] is True
+    assert data["valid_pixels"][1] is False
+    assert data["flags"][1] & (1 << 20)
+    assert data["raw_flux"][1] == 1
+
+
+def test_all_finite_warning_pixels_can_be_viewed_without_becoming_science_data(
+    client, mef
+):
+    with fits.open(mef, mode="update", memmap=False) as hdus:
+        hdus["FLAGS"].data[:] = 1 << 20
+    data = client.get("/api/cutout", params=PARAMS).json()
+    assert data["status"] == "success"
+    assert data["displayable_pixel_count"] == 255
+    assert data["display_warning_pixel_count"] == 255
+    assert data["usable_pixel_count"] == 0
+    assert not any(data["valid_pixels"])
+    assert data["mean_flux_mjy_sr"] is None
+    assert sum(value is not None for value in data["pixels"]) == 255
+
+
+@pytest.mark.parametrize("bit", [6, 7, 9])
+def test_unusable_detector_or_missing_data_still_stays_hidden(client, mef, bit):
+    with fits.open(mef, mode="update", memmap=False) as hdus:
+        hdus["FLAGS"].data[1, 2] = 1 << bit
+    data = client.get("/api/cutout", params=PARAMS).json()
+    assert data["pixels"][18] is None
+    assert data["display_valid_pixels"][18] is False
+    assert data["valid_pixels"][18] is False
+    assert data["raw_flux"][18] == 18

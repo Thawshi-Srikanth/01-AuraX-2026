@@ -16,3 +16,10 @@ test('colormaps affect valid pixels without filling masked measurements', () => 
   const color = new Uint8Array(768); color[765] = 9; color[766] = 100; color[767] = 200;
   expect([...imageRaster(image, color)]).toEqual([9,100,200,255,0,0,0,0]);
 });
+
+
+test('display mask permits warned context without changing the stricter analysis mask', () => {
+  const image = { width: 2, height: 1, pixels: [.5, NaN], valid_pixels: [false, false], display_valid_pixels: [true, false] } as CutoutResponse;
+  expect([...imageRaster(image, lut)]).toEqual([128,128,128,255,0,0,0,0]);
+  expect(image.valid_pixels).toEqual([false, false]);
+});
