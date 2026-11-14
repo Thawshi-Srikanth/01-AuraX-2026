@@ -1,4 +1,5 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { imageRaster, usableDisplayPixel } from '../utils/imageRaster';
 import { createPortal } from 'react-dom';
 import {
   Plus,
@@ -12,10 +13,9 @@ import {
   Sparkles,
   HelpCircle,
   Radio,
-  ExternalLink,
-  X,
 } from 'lucide-react';
 import { CutoutResponse, CatalogSource, fetchCatalogSources } from '../services/api';
+import { canvasPixel, imagePosition, catalogSelection, nearestCatalogSource, type ImageSelection } from '../utils/imageSelection';
 
 export interface AperturePhotometryMetrics {
   targetRadiusPx: number;
@@ -42,7 +42,8 @@ interface FitsCanvasProps {
   accessUrl?: string;
   cutoutSize?: number;
   onCutoutSizeChange?: (size: number) => void;
-  onAnalyzeSourceWavelengths?: (source: CatalogSource) => void;
+  onInspectRegion?: (position: ImageSelection) => void;
+  inspectedRegion?: ImageSelection | null;
   showAperture?: boolean;
   targetRadiusPx?: number;
   skyInnerRadiusPx?: number;
@@ -181,7 +182,8 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
   accessUrl,
   cutoutSize,
   onCutoutSizeChange,
-  onAnalyzeSourceWavelengths,
+  onInspectRegion,
+  inspectedRegion,
   showAperture = false,
   targetRadiusPx = 4,
   skyInnerRadiusPx = 7,
@@ -192,6 +194,8 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
   toolbarHost = null,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const maskedPixels = useMemo(() => cutout ? cutout.pixels.reduce((count, _pixel, i) => count + (usableDisplayPixel(cutout, i) ? 0 : 1), 0) : 0, [cutout]);
+  const maskPatternRef = useRef<CanvasPattern | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const cachedOffscreenRef = useRef<HTMLCanvasElement | null>(null);
   const rafDrawRef = useRef<number | null>(null);
@@ -293,7 +297,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
         if (!cancelled && res.status === 'success') {
           // Double guard: Ensure all sources are strictly bounded within canvas extents
           const bounded = res.sources.filter(
-            (s) => s.pixel_x >= 0 && s.pixel_x <= cutout.width && s.pixel_y >= 0 && s.pixel_y <= cutout.height
+            (s) => !!catalogSelection(cutout, s, [s.pixel_x, s.pixel_y])
           );
           setCatalogSources(bounded);
         }
@@ -354,7 +358,30 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     if (rotation !== 0) {
       ctx.rotate((rotation * Math.PI) / 180);
     }
+    if (maskedPixels > 0) {
+      if (!maskPatternRef.current) {
+        const tile = document.createElement('canvas'); tile.width = tile.height = 8;
+        const pattern = tile.getContext('2d')!;
+        pattern.fillStyle = '#1C2029'; pattern.fillRect(0, 0, 8, 8);
+        pattern.fillStyle = '#667080'; pattern.fillRect(0, 0, 4, 4); pattern.fillRect(4, 4, 4, 4);
+        maskPatternRef.current = ctx.createPattern(tile, 'repeat');
+      }
+      ctx.fillStyle = maskPatternRef.current!;
+      ctx.fillRect(-destW / 2, -destH / 2, destW, destH);
+    }
     ctx.drawImage(offscreen, -destW / 2, -destH / 2, destW, destH);
+
+    if (inspectedRegion) {
+      const px = -destW / 2 + (inspectedRegion.x + .5) * zoom;
+      const py = -destH / 2 + (inspectedRegion.y + .5) * zoom;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = 1.5;
+      for (const radius of [3, 5, 8]) {
+        ctx.setLineDash(radius === 3 ? [] : [3, 3]);
+        ctx.beginPath(); ctx.arc(px, py, radius * zoom, 0, 2 * Math.PI); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
 
     // Interactive Aperture Photometry Overlay (Zero Overhead Canvas Rendering)
     if (showAperture) {
@@ -399,13 +426,15 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     if (showCatalog && !loading && !loadingCatalog && catalogSources.length > 0) {
       const visibleSources = catalogSources.slice(0, catalogLimit);
 
-      for (let i = 0; i < visibleSources.length; i++) {
-        const s = visibleSources[i];
-        const relX = (s.pixel_x - cutout.width / 2) * zoom;
-        const relY = (s.pixel_y - cutout.height / 2) * zoom;
+      const markerSources = visibleSources.filter((source, index, all) => all.findIndex(other => other.ra_deg === source.ra_deg && other.dec_deg === source.dec_deg) === index)
+        .map(source => visibleSources.find(other => other.id === inspectedRegion?.sourceId && other.ra_deg === source.ra_deg && other.dec_deg === source.dec_deg) || source);
+      for (let i = 0; i < markerSources.length; i++) {
+        const s = markerSources[i];
+        const relX = (s.pixel_x + .5 - cutout.width / 2) * zoom;
+        const relY = (s.pixel_y + .5 - cutout.height / 2) * zoom;
 
         const isHovered = hoveredSource?.id === s.id;
-        const isSelected = selectedSource?.id === s.id;
+        const isSelected = inspectedRegion?.sourceId ? (inspectedRegion.sourceId === s.id || inspectedRegion.sourceId === 'shared:' + s.ra_deg + ':' + s.dec_deg) : selectedSource?.id === s.id;
         const isPrimary = s.brightness_rank === 1;
 
         ctx.save();
@@ -436,7 +465,9 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
 
         // Only render the label pill when hovering or when selected
         if (isHovered || isSelected) {
-          const labelText = s.name.length > 22 ? s.name.slice(0, 20) + '…' : s.name;
+          const shared = visibleSources.filter(other => other.ra_deg === s.ra_deg && other.dec_deg === s.dec_deg).length;
+          const label = shared > 1 && inspectedRegion?.sourceId !== s.id ? `${shared} catalog records` : s.name;
+          const labelText = label.length > 22 ? label.slice(0, 20) + '…' : label;
           const magVal = s.mag_v ?? s.mag_g ?? s.mag_k;
           const magLabel = magVal !== null && magVal !== undefined
             ? s.mag_v !== null ? `V=${magVal.toFixed(1)}` : s.mag_g !== null ? `G=${magVal.toFixed(1)}` : `K=${magVal.toFixed(1)}`
@@ -486,7 +517,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     }
 
     ctx.restore();
-  }, [cutout, loading, loadingCatalog, transform, rotation, showAperture, targetRadiusPx, skyInnerRadiusPx, skyOuterRadiusPx, showCatalog, catalogSources, catalogLimit, hoveredSource, selectedSource]);
+  }, [cutout, loading, loadingCatalog, transform, rotation, showAperture, targetRadiusPx, skyInnerRadiusPx, skyOuterRadiusPx, showCatalog, catalogSources, catalogLimit, hoveredSource, selectedSource, inspectedRegion, maskedPixels]);
 
   // Fit without changing the image aspect ratio; hosted controls occupy separate space.
   const fitToViewport = useCallback(() => {
@@ -518,7 +549,10 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
     });
   }, []);
 
-  // Colorize FITS pixel array into cached offscreen canvas ONLY on cutout or colormap change
+  const drawRef = useRef(drawToScreen);
+  useEffect(() => { drawRef.current = drawToScreen; }, [drawToScreen]);
+
+  // Colorize FITS pixels only when image data or colormap changes, not on pan or picks.
   useEffect(() => {
     if (!cutout || cutout.status === 'error' || cutout.width === 0 || cutout.height === 0) {
       cachedOffscreenRef.current = null;
@@ -530,31 +564,18 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
       return;
     }
 
-    const { width, height, pixels } = cutout;
+    const { width, height } = cutout;
     const offscreen = document.createElement('canvas');
-    offscreen.width = width;
-    offscreen.height = height;
+    offscreen.width = width; offscreen.height = height;
     const offCtx = offscreen.getContext('2d');
     if (!offCtx) return;
-
     const imgData = offCtx.createImageData(width, height);
-    const data = imgData.data;
-    const lut = COLORMAP_LUTS[colormap];
-
-    for (let i = 0; i < pixels.length; i++) {
-      const byte = Math.round(Math.max(0, Math.min(1, pixels[i])) * 255);
-      const lutIdx = byte * 3;
-      const idx = i * 4;
-      data[idx] = lut[lutIdx];
-      data[idx + 1] = lut[lutIdx + 1];
-      data[idx + 2] = lut[lutIdx + 2];
-      data[idx + 3] = 255;
-    }
+    imgData.data.set(imageRaster(cutout, COLORMAP_LUTS[colormap]));
 
     offCtx.putImageData(imgData, 0, 0);
     cachedOffscreenRef.current = offscreen;
-    drawToScreen();
-  }, [cutout, colormap, drawToScreen]);
+    drawRef.current();
+  }, [cutout, colormap]);
 
   // Auto-fit observation on initial mount, when astronomical target changes, or when cutout FOV size changes
   // Preserves user's custom zoom level, pan coordinates, and celestial rotation across timeline & spectral transitions
@@ -581,6 +602,16 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
       fitToViewport();
     }
   }, [cutout, targetId, fitToViewport]);
+
+  useEffect(() => {
+    if (!inspectedRegion?.sourceId || !cutout) return;
+    setTransform(current => {
+      const dx = (inspectedRegion.x + .5 - cutout.width / 2) * current.zoom;
+      const dy = (inspectedRegion.y + .5 - cutout.height / 2) * current.zoom;
+      const rad = rotationRef.current * Math.PI / 180;
+      return { ...current, panX: -(dx*Math.cos(rad)-dy*Math.sin(rad)), panY: -(dx*Math.sin(rad)+dy*Math.cos(rad)) };
+    });
+  }, [inspectedRegion, cutout]);
 
   // Immediate redraw on pan or zoom change
   useEffect(() => {
@@ -729,14 +760,16 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
 
         const unit = cutout.bunit || 'MJy/sr';
         const hasCalibratedPixel = !!cutout.raw_flux && cutout.raw_flux.length > idx;
-        const formattedFlux = observationMode && !hasCalibratedPixel
+        const fluxValue = observationMode && !hasCalibratedPixel
           ? 'Unavailable at this image size'
-          : !Number.isFinite(rawFluxVal) || cutout.valid_pixels?.[idx] === false
-          ? 'NaN (Masked)'
+          : !Number.isFinite(rawFluxVal) || (cutout.display_valid_pixels ?? cutout.valid_pixels)?.[idx] === false
+          ? 'Unavailable (masked)'
           : Math.abs(rawFluxVal) < 0.001 && rawFluxVal !== 0
           ? `${rawFluxVal.toExponential(3)} ${unit}`
           : `${rawFluxVal.toFixed(4)} ${unit}`;
 
+        const formattedFlux = usableDisplayPixel(cutout, idx) && cutout.valid_pixels?.[idx] === false
+          ? fluxValue + ' · quality flagged; excluded from measurements' : fluxValue;
         if (hudFluxRef.current) {
           hudFluxRef.current.textContent = formattedFlux;
         }
@@ -777,18 +810,12 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
         // Astrometric Catalog Source Hover Detection (only active after both FITS and sources finish loading)
         if (showCatalog && !loading && !loadingCatalog && catalogSources.length > 0) {
           const visible = catalogSources.slice(0, catalogLimit);
-          let found: CatalogSource | null = null;
-          for (const s of visible) {
-            const dPx = Math.hypot(imgX + 0.5 - s.pixel_x, imgY + 0.5 - s.pixel_y);
-            if (dPx * zoom < 14) {
-              found = s;
-              break;
-            }
-          }
+          const found = nearestCatalogSource(visible, (unrotX + destW / 2) / zoom, (unrotY + destH / 2) / zoom, zoom);
           if (found && floatingBadgeRef.current) {
             const magVal = found.mag_v ?? found.mag_g ?? found.mag_k;
             const magStr = magVal != null ? ` · mag=${magVal.toFixed(1)}` : '';
-            floatingBadgeRef.current.textContent = `★ ${found.name}${magStr} · ${formattedFlux}`;
+            const shared = visible.filter(other => other.ra_deg === found.ra_deg && other.dec_deg === found.dec_deg).length;
+            floatingBadgeRef.current.textContent = `${shared > 1 ? shared + ' catalog records' : found.name}${magStr} · ${formattedFlux}`;
           }
           setHoveredSource((prev) => (prev?.id !== found?.id ? found : prev));
         } else if (hoveredSource) {
@@ -812,56 +839,28 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
 
   const handleMouseUp = () => setIsDragging(false);
 
-  // Click on a red-circled star in the FITS image to select it for Wavelengths analysis
+  // Picking a position does not replace the displayed image or its target.
   const handleCanvasClick = (e: React.MouseEvent) => {
-    if (minimal || hasDraggedRef.current) return;
-    if (!showCatalog || loading || loadingCatalog || catalogSources.length === 0 || !cutout || cutout.width === 0) {
-      return;
-    }
-
-    if (hoveredSource) {
-      setSelectedSource(hoveredSource);
-      return;
-    }
-
+    if (e.target !== canvasRef.current || minimal || hasDraggedRef.current || loading || !cutout) return;
     const container = containerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-
     const { zoom, panX, panY } = transformRef.current;
-    const currentRotation = rotationRef.current;
-    const destW = cutout.width * zoom;
-    const destH = cutout.height * zoom;
-    const centerX = rect.width / 2 + panX;
-    const centerY = rect.height / 2 + panY;
-
-    let unrotX = mouseX - centerX;
-    let unrotY = mouseY - centerY;
-    if (currentRotation !== 0) {
-      const rad = (-currentRotation * Math.PI) / 180;
-      const cosR = Math.cos(rad);
-      const sinR = Math.sin(rad);
-      const rx = unrotX * cosR - unrotY * sinR;
-      const ry = unrotX * sinR + unrotY * cosR;
-      unrotX = rx;
-      unrotY = ry;
-    }
-
-    const imgX = (unrotX + destW / 2) / zoom;
-    const imgY = (unrotY + destH / 2) / zoom;
-
+    const { x, y } = canvasPixel(e.clientX - rect.left, e.clientY - rect.top,
+      rect.width, rect.height, cutout.width, cutout.height, zoom, panX, panY, rotationRef.current);
     const visible = catalogSources.slice(0, catalogLimit);
-    let found: CatalogSource | null = null;
-    for (const s of visible) {
-      const dPx = Math.hypot(imgX - s.pixel_x, imgY - s.pixel_y);
-      if (dPx * zoom < 16) {
-        found = s;
-        break;
-      }
-    }
+    const found = showCatalog && !loadingCatalog ? nearestCatalogSource(visible, x, y, zoom) : null;
     setSelectedSource(found);
+    if (found) {
+      const position = catalogSelection(cutout, found, [found.pixel_x, found.pixel_y]);
+      if (position) {
+        const shared = visible.filter(s => s.ra_deg === found.ra_deg && s.dec_deg === found.dec_deg).length;
+        onInspectRegion?.(shared > 1 ? { ...position, sourceId: 'shared:' + found.ra_deg + ':' + found.dec_deg, label: `Shared catalog position (${shared} records)` } : position);
+      }
+      return;
+    }
+    const position = imagePosition(cutout, x, y);
+    if (position) onInspectRegion?.(position);
   };
 
   // Exact cursor-anchored wheel zoom
@@ -1051,6 +1050,8 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
         —
       </div>}
 
+      {maskedPixels > 0 && !loading && <div className="absolute top-2 left-2 z-10 pointer-events-none bg-bg-surface/90 px-2 py-1 text-[10px] text-text-secondary">Checkerboard = excluded pixels ({maskedPixels})</div>}
+      {!!cutout?.display_warning_pixel_count && !loading && <div className="absolute top-9 left-2 z-10 max-w-[240px] pointer-events-none bg-bg-surface/90 px-2 py-1 text-[10px] text-text-secondary">{cutout.display_warning_pixel_count} quality-flagged pixels shown for context; excluded from measurements</div>}
       {/* Center Subtle Reticle */}
       <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
         <div className="w-24 h-[1px] bg-border-strong opacity-30 absolute" />
@@ -1250,62 +1251,7 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
       </div>
       )}
 
-      {/* Selected Star Inspector Pill (Click any red circle in FITS image -> Analyze Wavelengths) */}
       {showCatalog && catalogError && <p role="alert" className="absolute top-14 left-3 text-xs text-text-secondary">{catalogError}</p>}
-      {!minimal && !loading && !loadingCatalog && selectedSource && (
-        <div
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 z-30 bg-[#0B0D11]/95 border border-[#1C2029] rounded-xl px-3.5 py-2 shadow-2xl backdrop-blur-md flex items-center space-x-3 text-[11px] select-none"
-        >
-          <div className="flex items-center space-x-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-red-500/30 shrink-0" />
-            <div className="flex flex-col">
-              <div className="flex items-center space-x-1.5">
-                <span className="text-white font-semibold truncate max-w-[180px]">
-                  {selectedSource.name}
-                </span>
-                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-[#12151C] border border-[#1C2029] text-[#888E9B]">
-                  {selectedSource.object_type}
-                </span>
-              </div>
-              <div className="text-[10px] text-[#888E9B]">Catalog position · epoch unspecified · image match unverified</div>
-              <div className="text-[10px] font-mono text-[#888E9B] tabular-nums">
-                {(() => {
-                  const { raStr, decStr } = formatCelestialCoordinates(selectedSource.ra_deg, selectedSource.dec_deg);
-                  const magVal = selectedSource.mag_v ?? selectedSource.mag_g ?? selectedSource.mag_k;
-                  const magStr = magVal != null ? ` · mag ${magVal.toFixed(1)}` : '';
-                  return `${raStr} ${decStr} · px [${Math.round(selectedSource.pixel_x)}, ${Math.round(selectedSource.pixel_y)}]${magStr}`;
-                })()}
-              </div>
-            </div>
-          </div>
-
-          {onAnalyzeSourceWavelengths && (
-            <>
-              <div className="w-px h-6 bg-[#1C2029]" />
-              <button
-                type="button"
-                onClick={() => onAnalyzeSourceWavelengths(selectedSource)}
-                className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/50 rounded-lg text-[11px] font-semibold flex items-center space-x-1.5 transition-colors cursor-pointer shrink-0"
-                title="Open measured wavelength samples for this catalog position"
-              >
-                <ExternalLink size={12} />
-                <span>Analyze Wavelengths</span>
-              </button>
-            </>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setSelectedSource(null)}
-            className="p-1 text-[#888E9B] hover:text-white rounded transition-colors cursor-pointer"
-            title="Clear selection"
-          >
-            <X size={13} />
-          </button>
-        </div>
-      )}
 
       {/* Bottom-Right Scientific Range Readout & Optimization HUD (Hidden in Minimal Mode) */}
       {!minimal && !observationMode && cutout && cutout.width > 0 && (

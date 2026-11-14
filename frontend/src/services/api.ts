@@ -73,6 +73,8 @@ export interface CutoutResponse {
   pixels: number[];
   raw_flux?: number[];
   valid_pixels?: boolean[];
+  display_valid_pixels?: boolean[];
+  display_warning_pixel_count?: number;
   wavelength_um?: number;
   channel_width_um?: number;
   bunit?: string;
@@ -157,7 +159,7 @@ export async function fetchCutout(
   if (![data.pixels, data.raw_flux, data.valid_pixels].every(a => Array.isArray(a) && a.length === count)) throw new Error('Incomplete image arrays.');
   return {
     ...data,
-    pixels: data.pixels.map((v: number | null, i: number) => data.valid_pixels[i] && v !== null ? v : NaN),
+    pixels: data.pixels.map((v: number | null, i: number) => (data.display_valid_pixels ?? data.valid_pixels)[i] && v !== null ? v : NaN),
     raw_flux: data.raw_flux.map((v: number | null) => v ?? NaN),
     wcs: { crval1: null, crval2: null, crpix1: null, crpix2: null, cdelt1: null, cdelt2: null,
       cunit1: 'deg', cunit2: 'deg', ...data.wcs, spatial_wcs_header: data.spatial_wcs_header },
@@ -354,6 +356,7 @@ export interface SpectralFeature {
 type str = string;
 
 export interface SpectralPoint {
+  source_url?: string;
   artifact_id?: string;
   obs_id?: string;
   utc_date?: string;
@@ -378,6 +381,7 @@ export interface DetectorBandInfo {
 }
 
 export interface SpectrumResponse {
+  message?: string;
   target_name: string;
   ra_deg: number;
   dec_deg: number;
@@ -394,14 +398,15 @@ export interface SpectrumResponse {
 export async function fetchTargetSpectrum(
   targetName: string,
   ra?: number,
-  dec?: number
+  dec?: number,
+  signal?: AbortSignal
 ): Promise<SpectrumResponse> {
   const params = new URLSearchParams({ target_name: targetName });
   if (ra !== undefined) params.append('ra', normalizeRa(ra).toString());
   if (dec !== undefined) params.append('dec', dec.toString());
 
   const url = `${API_BASE_URL}/api/spectrum?${params.toString()}`;
-  const response = await fetch(url);
+  const response = await fetch(url, { signal });
   if (!response.ok) {
     throw new Error(`Failed to extract spectral profile: ${response.statusText}`);
   }
@@ -522,4 +527,41 @@ export function adaptMatches(data: ArchiveMatches): MatchResponse {
     complete: data.search_complete && !limited && !data.failed_count && !data.pending_count,
     can_continue: data.can_continue || data.failed_count > 0, auto_continue: data.can_continue && data.status !== 'partial', limited,
     provenance: 'NASA/IPAC IRSA; target-position wavelength checks only' };
+}
+
+
+export interface RegionAnalysis {
+  status: 'success' | 'partial' | 'insufficient_data'; summary: string;
+  ra_deg: number; dec_deg: number; pixel_x: number; pixel_y: number;
+  radius_px: number; background_inner_px: number; background_outer_px: number;
+  usable_pixels: number; masked_pixels: number; aperture_coverage: number;
+  background_coverage: number; background_clipped_pixels: number; wavelength_rejected_pixels: number;
+  wavelength_um: number; bandwidth_um: number; source_url: string;
+  method: string; uncertainty: string; caveats: string[];
+  measurements: { mean_brightness_mjy_sr: number; background_mjy_sr: number;
+    excess_mjy_sr: number; excess_error_mjy_sr: number; usable_aperture_flux_mjy: number;
+    flux_error_mjy: number; snr: number | null; solid_angle_sr: number } | null;
+}
+export interface RegionCatalogRecord { id: string; name: string; object_type: string; object_type_label: string | null; ra_deg: number; dec_deg: number; distance_arcsec: number; coordinate_reference: string | null }
+export interface RegionCatalog { sources: RegionCatalogRecord[]; truncated: boolean; provenance: string; source_url: string; retrieved_at: string; caveat: string; coordinate_epoch: string | null }
+export async function fetchRegionAnalysis(accessUrl: string, centerRa: number, centerDec: number, size: number, ra: number, dec: number, signal: AbortSignal): Promise<RegionAnalysis> {
+  return readResponse(await fetch(`${API_BASE_URL}/api/region`, {
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ access_url: accessUrl, center_ra: centerRa, center_dec: centerDec, size_deg: angularSize(size), ra, dec }),
+  }), 'Region measurement unavailable');
+}
+export async function fetchRegionCatalog(ra: number, dec: number, signal: AbortSignal): Promise<RegionCatalog> {
+  const params = new URLSearchParams({ ra: String(normalizeRa(ra)), dec: String(dec), radius_arcmin: '1', limit: '20' });
+  return readResponse(await fetch(`${API_BASE_URL}/api/catalog/sources?${params}`, { signal }), 'Catalog context unavailable');
+}
+
+
+export async function projectCatalogPosition(wcs: WcsMetadata, source: Pick<RegionCatalogRecord, 'ra_deg' | 'dec_deg'>, signal: AbortSignal): Promise<number[] | null> {
+  if (!wcs.spatial_wcs_header) throw new Error('This image has no full WCS for source selection.');
+  const data = await readResponse(await fetch(`${API_BASE_URL}/api/catalog/project`, {
+    method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ spatial_wcs_header: wcs.spatial_wcs_header, positions: [{ ra: source.ra_deg, dec: source.dec_deg }] }),
+  }), 'Source projection unavailable');
+  if (!Array.isArray(data.pixels) || data.pixels.length !== 1) throw new Error('Invalid source projection.');
+  return data.pixels[0];
 }

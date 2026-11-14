@@ -103,3 +103,13 @@ test('cancelling a client search also cancels its server job', async () => {
   await expect(findComparisonMatches({ ra_deg: 1, dec_deg: 2, size_px: 200 }, controller.signal)).rejects.toThrow('Stopped');
   expect(calls.some(url => url.endsWith('/jobs/cancel-me/cancel'))).toBe(true);
 });
+
+
+test('quality-warning image values render while analysis eligibility remains false', async () => {
+  stub([{status:'success',width:2,height:1,pixels:[.4,null],raw_flux:[5,null],valid_pixels:[false,false],display_valid_pixels:[true,false],display_warning_pixel_count:1,wcs:{},source_url:'archive'}]);
+  const image = await fetchCutout('url');
+  expect(image.pixels[0]).toBe(.4);
+  expect(image.valid_pixels).toEqual([false,false]);
+  expect(image.display_valid_pixels).toEqual([true,false]);
+  expect(Number.isNaN(image.pixels[1])).toBe(true);
+});

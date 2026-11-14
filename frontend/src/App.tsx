@@ -7,7 +7,6 @@ import { DocsView } from './views/DocsView';
 import { ExploreView } from './views/ExploreView';
 import { ObservationsView } from './views/ObservationsView';
 import { CompareView } from './views/CompareView';
-import { WavelengthsView } from './views/WavelengthsView';
 import { CollectionsView } from './views/CollectionsView';
 import { NavigationTab } from './tokens/colors';
 import { ResolvedTarget, resolveTarget } from './services/api';
@@ -39,9 +38,14 @@ export function App() {
   const setTarget = useCallback((next: ResolvedTarget) => {
     pushNext.current = targetIdentity(next) !== targetIdentity(sessionRef.current.target);
     setNameRequest(null); setRouteProblem(null);
+    // Saved-target launchers select a target and navigate in the same event.
+    sessionRef.current = { ...sessionRef.current, target: next };
     setSession(current => ({ ...current, target: next }));
   }, []);
   const navigate = useCallback((tab: NavigationTab) => {
+    if (tab === 'Wavelengths') {
+      tab = 'Observations';
+    }
     pushNext.current = pushNext.current || tab !== activeTab || !!nameRequest || !!routeProblem;
     setNameRequest(null); setRouteProblem(null); setActiveTab(tab);
   }, [activeTab, nameRequest, routeProblem]);
@@ -96,7 +100,7 @@ export function App() {
     <AnalysisContext.Provider value={context}><div className="min-h-screen h-screen flex flex-col bg-bg-app text-text-primary select-none">
       {/* SpaceX Mission Navbar */}
       <Navbar
-        activeTab={activeTab}
+        activeTab={activeTab === 'Wavelengths' ? 'Observations' : activeTab}
         onTabChange={navigate}
         onOpenSearch={() => setIsSearchOpen(true)}
         targetLabel={nameRequest ? 'Resolving ' + nameRequest : routeProblem ? 'No valid link target' : target.query || target.canonical_name}
@@ -122,7 +126,7 @@ export function App() {
               activeTarget={target}
             />
           )}
-          {activeTab === 'Observations' && (
+          {(activeTab === 'Observations' || activeTab === 'Wavelengths') && (
             <ObservationsView key={targetKey + ":" + revision}
               target={target}
               onNavigate={navigate}
@@ -131,11 +135,6 @@ export function App() {
           )}
           {activeTab === 'Compare' && (
             <CompareView key={targetKey + ":" + revision} target={target} />
-          )}
-          {activeTab === 'Wavelengths' && (
-            <WavelengthsView key={targetKey + ":" + revision}
-              target={target}
-            />
           )}
           {activeTab === 'Collections' && (
             <CollectionsView

@@ -18,13 +18,20 @@ A sky-map background helps you navigate. It is not the selected SPHEREx exposure
 4. **Inspect the image.** Use Fit to see its full extent, then zoom and pan. Try another display stretch to reveal faint structure.
 5. **Read a pixel.** The brightness readout describes the calibrated measurement, while the display stretch controls its appearance.
 
+Checkerboard patches mark nonfinite or unusable detector/data pixels. Other
+quality-flagged brightness values remain visible with warnings but are excluded
+from measurements. Valid dark pixels remain dark; no missing values are filled. In the Region inspector, click a nearby
+catalog name to center its exact reference position. A record outside the current
+image is reported as outside; it does not select another source. Shared catalog
+positions remain unresolved associations.
+
 If an archive request fails, retry when the service is available. An empty coverage result and a connection failure mean different things; neither establishes that the object emits no light.
 
 ## Know what each view does
 
 - **Sky map:** find a region and orient yourself on the sky.
 - **Images:** inspect individual calibrated images and their metadata.
-- **Wavelengths:** explore how measurements vary with wavelength. Check coverage and uncertainties before interpreting a feature.
+- **Region inspector:** click an image region to inspect its signal, background, quality and nearby catalog records.
 - **Compare dates:** automatically find wavelength-compatible dates, then blink through two to four observations or inspect them in a linked grid.
 - **Saved targets:** return to saved selections through the navigation menu.
 

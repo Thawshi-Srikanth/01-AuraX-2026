@@ -1,14 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, Bookmark, Download, Loader2, PanelRightClose, PanelRightOpen, Play } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bookmark, Download, Loader2, PanelRightClose, PanelRightOpen, Pause, Play } from 'lucide-react';
 import { NavigationTab, DETECTOR_COLORS } from '../tokens/colors';
-import { ResolvedTarget, fetchObservations, ObservationsResponse, SPHERExObservation, fetchCutout } from '../services/api';
+import { ResolvedTarget, fetchObservations, ObservationsResponse, SPHERExObservation, fetchCutout, projectCatalogPosition } from '../services/api';
 import { FitsCanvas } from '../components/FitsCanvas';
+import { RegionInspector } from '../components/RegionInspector';
 import { ObservationTimeline } from '../components/ObservationTimeline';
 import type { DateTimeRange } from '../components/DateTimeRangeFilter';
 import { isTargetSaved, toggleSaveTarget, exportCutoutJson } from '../utils/collections';
 import { createFrameLoader, displayedFrame, FrameRequest, FrameState, frameRequestKey } from '../utils/observationFrames';
 import { matchesObservation } from '../utils/navigation';
 import { useRetainedState } from '../utils/AnalysisContext';
+import { catalogSelection, type ImageSelection } from '../utils/imageSelection';
 import './observations.css';
 
 interface ObservationsViewProps {
@@ -19,7 +21,7 @@ interface ObservationsViewProps {
   onDetectorChange?: (det: string) => void;
 }
 const DEFAULT_RANGE: DateTimeRange = { fromDate: null, fromTime: '00:00', toDate: null, toTime: '23:59' };
-const PANELS = ['Details', 'Provenance'] as const;
+const PANELS = ['Details', 'Provenance', 'Region'] as const;
 type Panel = typeof PANELS[number];
 const observationId = (observation: SPHERExObservation) => JSON.stringify([observation.obs_id, observation.detector, observation.access_url]);
 const utcLabel = (value: string) => value.replace('T', ' ').replace(/Z$/, '') + ' UTC';
@@ -36,12 +38,16 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
   const [size, setSize] = useRetainedState('images', targetKey, 'size', 200);
   const [frameState, setFrameState] = useState<FrameState | null>(null);
   const [retry, setRetry] = useState(0);
+  const [inspection, setInspection] = useState<{ key: string; position: ImageSelection } | null>(null);
+  const [playbackContext, setPlaybackContext] = useState<string | null>(null);
   const [loader] = useState(() => createFrameLoader(fetchCutout));
   const [panel, setPanel] = useRetainedState<Panel>('images', targetKey, 'panel', 'Details');
   const [toolbarHost, setToolbarHost] = useState<HTMLDivElement | null>(null);
   const [panelOpen, setPanelOpen] = useRetainedState('images', targetKey, 'panelOpen', true);
   const [saved, setSaved] = useState(() => isTargetSaved(target));
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  const informationRef = useRef<HTMLElement>(null);
   const data = catalog?.key === targetKey ? catalog.response : null;
   const loadingCatalog = data === null;
   const range = dates.key === targetKey ? dates.range : DEFAULT_RANGE;
@@ -88,9 +94,32 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
   } : null, [selected, target.coordinates.ra_deg, target.coordinates.dec_deg, stretch, size]);
   const requestKey = request ? frameRequestKey(request) : null;
   const frame = displayedFrame(frameState, requestKey);
+  const inspected = frame && inspection?.key === requestKey ? inspection.position : null;
+  useEffect(() => { setInspection(null); }, [requestKey]);
+  useEffect(() => {
+    if (!inspected || !panelOpen || panel !== 'Region' || !window.matchMedia('(max-width: 699px)').matches) return;
+    const timer = window.requestAnimationFrame(() => {
+      const workspace = workspaceRef.current, information = informationRef.current;
+      if (workspace && information) workspace.scrollTop += information.getBoundingClientRect().top - workspace.getBoundingClientRect().top;
+    });
+    return () => window.cancelAnimationFrame(timer);
+  }, [inspected, panelOpen, panel]);
   const imageError = frameState?.key === requestKey && frameState.status === 'error' ? frameState.message : null;
   const loadingImage = !!request && !frame && !imageError;
   const displayedIndex = frame ? active.findIndex(observation => observationId(observation) === observationId(frame.observation)) : -1;
+  const playbackKey = JSON.stringify([targetKey, active.map(observationId), stretch, size, catalogRetry]);
+  const isPlaying = playbackContext === playbackKey && !imageError && !!selected && active.length > 1;
+  useEffect(() => {
+    if (playbackContext && !isPlaying) setPlaybackContext(null);
+  }, [playbackContext, isPlaying]);
+  useEffect(() => {
+    // Give each successfully displayed exposure its full dwell time. No timer runs
+    // while buffering, and no new image is requested after pause or unmount.
+    if (!isPlaying || !frame || displayedIndex < 0) return;
+    const next = active[(displayedIndex + 1) % active.length];
+    const timer = window.setTimeout(() => setSelection({ key: targetKey, id: observationId(next) }), 1000);
+    return () => window.clearTimeout(timer);
+  }, [isPlaying, frame, displayedIndex, active, targetKey, setSelection]);
   const resetFilters = () => { setDates({ key: targetKey, range: DEFAULT_RANGE }); setSelectedDetector('All'); };
 
   useEffect(() => {
@@ -99,6 +128,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
   }, [request, retry, loader]);
 
   function selectObservation(observation: SPHERExObservation) {
+    setPlaybackContext(null);
     setSelection({ key: targetKey, id: observationId(observation) });
   }
   function step(delta: number) {
@@ -115,7 +145,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
     setCatalogRetry(value => value + 1);
   }
   const isFilteredEmpty = (data?.status === 'success' || data?.status === 'partial') && observations.length > 0 && active.length === 0;
-  const playbackReason = 'Playback requires validated wavelength matching and sky alignment. Browse individual observations with the arrows.';
+  const playbackReason = 'Browse individual observations. Wavelengths and alignment may differ; brightness changes alone do not establish variability.';
   const emptyTitle = loadingCatalog ? 'Finding observations'
     : data?.status === 'error' ? 'Archive unavailable'
     : selectionUnavailable ? 'Selected observation unavailable' : isFilteredEmpty ? 'No observations match these filters' : 'No observations available';
@@ -127,10 +157,10 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
   return (
     <section className="images-root" aria-label="Images">
       <header className="images-heading">
-        <div><h1>Images</h1><p role="status">{frame ? utcLabel(frame.observation.utc_date) : loadingImage ? 'Loading selected observation…' : 'No image displayed'}</p>{frame && <span className="images-current-detector"><i style={{ backgroundColor: DETECTOR_COLORS[frame.observation.detector] }} aria-hidden="true" />{frame.observation.detector}</span>}</div>
+        <div><h1>Images</h1><p role="status">{frame ? utcLabel(frame.observation.utc_date) : loadingImage ? 'Loading selected observation…' : 'No image displayed'}</p>{frame && <span className="images-current-detector"><i style={{ backgroundColor: DETECTOR_COLORS[frame.observation.detector] }} aria-hidden="true" />{frame.observation.detector}</span>}{frame && <span className="images-current-wavelength">{Number.isFinite(frame.cutout.wavelength_um) ? frame.cutout.wavelength_um!.toFixed(4) + ' µm at target' : 'Target wavelength unavailable'}</span>}</div>
         <button type="button" className="images-panel-toggle" aria-label={panelOpen ? 'Hide details' : 'Show details'} onClick={() => setPanelOpen(open => !open)} aria-expanded={panelOpen} aria-controls="image-information">{panelOpen ? <PanelRightClose size={17} /> : <PanelRightOpen size={17} />}<span>{panelOpen ? 'Hide details' : 'Show details'}</span></button>
       </header>
-      <div className="images-workspace">
+      <div ref={workspaceRef} className="images-workspace">
         <aside className="images-selection" aria-label="Filters and observations">
           <section className="images-filters" aria-labelledby="image-filters-heading">
             <div className="images-filter-heading"><h2 id="image-filters-heading">Filters</h2><button type="button" className="images-reset-filters" onClick={resetFilters}>Reset</button></div>
@@ -175,10 +205,11 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
               {isFilteredEmpty && <button type="button" onClick={resetFilters}>Reset filters</button>}
               {data?.status === 'no_coverage' && <button type="button" onClick={() => onNavigate('Home')}>Choose another position</button>}
             </div> : imageError ? <div className="images-empty" role="alert"><h2>Selected image unavailable</h2><p>{imageError}</p><button type="button" onClick={retryImage}>Retry image</button><p>Or choose another observation from the list.</p></div>
-              : <FitsCanvas cutout={frame?.cutout || null} loading={loadingImage} selectedStretch={stretch} onStretchChange={setStretch} onRetry={retryImage} targetId={targetKey} targetName={target.canonical_name || target.query} targetRa={target.coordinates.ra_deg} targetDec={target.coordinates.dec_deg} accessUrl={frame?.observation.access_url} cutoutSize={size} onCutoutSizeChange={setSize} observationMode toolbarHost={toolbarHost} />}
+              : <FitsCanvas cutout={frame?.cutout || null} loading={loadingImage} isPlaying={isPlaying} selectedStretch={stretch} onStretchChange={setStretch} onRetry={retryImage} targetId={targetKey} targetName={target.canonical_name || target.query} targetRa={target.coordinates.ra_deg} targetDec={target.coordinates.dec_deg} accessUrl={frame?.observation.access_url} cutoutSize={size} onCutoutSizeChange={setSize} observationMode toolbarHost={toolbarHost} inspectedRegion={inspected} onInspectRegion={position => { setPlaybackContext(null); setPanelOpen(true); setPanel('Region'); if (requestKey) setInspection({ key: requestKey, position }); }} />}
+
           </div>
         </div>
-        {panelOpen && <aside id="image-information" className="images-information" aria-label="Observation details">
+        {panelOpen && <aside ref={informationRef} id="image-information" className="images-information" aria-label="Observation details">
           <div className="images-tabs" role="tablist" aria-label="Image information">
             {PANELS.map((name, index) => <button ref={element => { tabRefs.current[index] = element; }} id={'image-tab-' + index} key={name} type="button" role="tab" aria-selected={panel === name} aria-controls="image-panel" tabIndex={panel === name ? 0 : -1} onClick={() => setPanel(name)} onKeyDown={event => {
               const next = event.key === 'ArrowRight' ? (index + 1) % PANELS.length : event.key === 'ArrowLeft' ? (index + PANELS.length - 1) % PANELS.length : event.key === 'Home' ? 0 : event.key === 'End' ? PANELS.length - 1 : null;
@@ -201,6 +232,16 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
               {data?.truncated && <p className="images-panel-note">The query returns up to 100 exposures, ordered oldest first. Later observations may not be included.</p>}
               {frame ? <><h2>Displayed observation</h2><p className="images-observation-id">{frame.observation.obs_id}</p><p>{frame.cutout.source}</p>{frame.observation.access_url.startsWith('https://') && <a href={frame.observation.access_url} target="_blank" rel="noreferrer">Open archive image link ↗</a>}</> : <p className="images-panel-note">No image provenance is shown until an observation loads.</p>}
             </>}
+            <div hidden={panel !== 'Region'}>
+            {inspected && frame ? <RegionInspector key={JSON.stringify([requestKey, inspected.x, inspected.y, inspected.sourceId, inspected.ra, inspected.dec])} position={inspected} frame={frame} centerRa={target.coordinates.ra_deg} centerDec={target.coordinates.dec_deg} size={size} onSelectSource={async (source, signal) => {
+              const pixel = await projectCatalogPosition(frame.cutout.wcs, source, signal);
+              if (signal.aborted) return;
+              const position = catalogSelection(frame.cutout, source, pixel);
+              if (!position) throw new Error('This catalog position is outside the current image. No other position was selected.');
+              setPlaybackContext(null); setPanelOpen(true); setPanel('Region');
+              if (requestKey) setInspection({ key: requestKey, position });
+            }} onClear={() => { setInspection(null); tabRefs.current[2]?.focus(); }} /> : <p className="images-panel-note" role="status">Select a region or source in the image.</p>}
+            </div>
           </div>
         </aside>}
       </div>
@@ -208,13 +249,13 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
         <div className="images-transport">
           <div className="images-step-controls">
             <button type="button" aria-label="Previous observation" disabled={!frame || active.length < 2} onClick={() => step(-1)}><ArrowLeft size={17} aria-hidden="true" /><span>Previous</span></button>
-            <button type="button" aria-label="Play timeline playback" disabled title={playbackReason} aria-describedby="images-playback-status"><Play size={17} aria-hidden="true" /><span>Play</span></button>
+            <button type="button" aria-label={isPlaying ? 'Pause observations' : 'Play observations'} aria-pressed={isPlaying} disabled={!isPlaying && (!frame || active.length < 2)} title={active.length < 2 ? 'At least two available observations are needed.' : playbackReason} aria-describedby="images-playback-status" onClick={() => setPlaybackContext(isPlaying ? null : playbackKey)}>{isPlaying ? <Pause size={17} aria-hidden="true" /> : <Play size={17} aria-hidden="true" />}<span>{isPlaying ? 'Pause' : 'Play'}</span></button>
             <button type="button" aria-label="Next observation" disabled={!frame || active.length < 2} onClick={() => step(1)}><span>Next</span><ArrowRight size={17} aria-hidden="true" /></button>
           </div>
-          <span className="images-frame-count">{frame ? 'Frame ' + (displayedIndex + 1) + ' of ' + active.length : loadingImage ? 'Loading image…' : 'No image displayed'}</span>
+          <span className="images-frame-count">{frame ? 'Frame ' + (displayedIndex + 1) + ' of ' + active.length : loadingImage ? isPlaying ? 'Buffering next observation…' : 'Loading image…' : 'No image displayed'}</span>
         </div>
         <ObservationTimeline observations={active} selected={selected} displayed={frame?.observation || null} onSelect={selectObservation} />
-        <p id="images-playback-status">Play unavailable until wavelength and alignment checks pass.</p>
+        <p id="images-playback-status">Individual observations. Wavelengths and alignment may differ; changes alone do not establish variability.</p>
       </footer>
     </section>
   );

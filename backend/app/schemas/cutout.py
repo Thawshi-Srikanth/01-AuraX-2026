@@ -13,7 +13,15 @@ class CutoutResponse(BaseModel):
     raw_flux: list[float | None]
     variance: list[float | None]
     flags: list[int]
-    valid_pixels: list[bool]
+    valid_pixels: list[bool]  # Strict analysis mask; not the display mask.
+    display_valid_pixels: list[bool]
+    displayable_pixel_count: int
+    display_warning_pixel_count: int
+    display_unusable_flag_mask: int
+    display_policy: str = (
+        "Finite IMAGE values except NONFUNC, DICHROIC and MISSING_DATA; "
+        "other quality warnings remain visible but excluded from analysis"
+    )
     bunit: str = "MJy/sr"
     variance_unit: str = "(MJy/sr)^2"
     min_flux_mjy_sr: float | None

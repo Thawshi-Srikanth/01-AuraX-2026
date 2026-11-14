@@ -97,9 +97,43 @@ Images retain physical brightness, quality masks, and full SIP coordinates from
 Astropy. `/api/catalog/project` maps reference positions through that exact header;
 a projected marker is not a verified image detection or a motion-corrected position.
 
-Wavelengths shows only measured nearest-pixel samples and their variance errors.
-Samples may span dates; no continuous spectrum, identified features, or missing
-channels are inferred. Comparison searches poll resumable background jobs and
+In Images, Play cycles through the current filtered observations, including different
+wavelengths. Each loaded frame stays visible for one second; playback waits for slow
+images and pauses on failures, manual selections, filter/view changes or navigation.
+The displayed date and locally calibrated wavelength belong to the displayed image.
+These individual exposures may have different passbands and sky grids; brightness
+changes alone do not establish variability or motion.
+
+The FITS viewer shows finite IMAGE values for visual context, including pixels
+carrying artifact warnings such as CROSSTALK. Their original flags remain visible
+as warnings and the stricter analysis mask still excludes them from measurements.
+NONFUNC, DICHROIC, MISSING_DATA and nonfinite image pixels show a labeled
+checkerboard. Valid low-brightness and zero-valued display pixels remain unchanged;
+no data is filled or interpolated. Source markers use full-SIP reference positions. Clicking
+a nearby catalog name selects and centers that exact reference position in the
+current image, with a separate link for catalog details. Sources outside the image
+are reported without substituting another position. Shared coordinates are shown
+as shared catalog records, not independently resolved objects.
+
+Click a region inside a loaded FITS image to open the Region tab in the existing
+right panel, beside Details and Provenance. Before selection, the tab asks you to
+select a region or source.
+It shows a magnified image detail, an exact three-pixel-radius aperture, a local
+background annulus, usable-area flux and formal variance uncertainty. It reuses
+the displayed cached FITS without an additional archive download. Background
+outliers are sigma-clipped; both region and annulus must retain at least 80%
+coverage after quality and local-passband screening. Pixel solid angles use full
+SIP WCS corners. No missing flux, PSF-wing correction or correlated-noise correction
+is inferred. A signed signal-to-formal-error ratio describes this image, not a
+confirmed astronomical detection.
+
+Nearby SIMBAD reference records load separately and remain unverified possible
+associations. They are not motion-propagated or confirmed image matches; shared
+catalog coordinates do not imply separately resolved sources. The inspector does
+not infer an emission spectrum or source type from a single exposure. Selecting a
+target loads images without automatically opening wavelength analysis.
+
+Comparison searches poll resumable background jobs and
 cancel outstanding jobs when leaving the search. Candidate groups require every
 pair to be verified; only a ready registered sequence can blink. Difference images
 and motion measurements remain unavailable. Fresh saved collections start empty;
@@ -205,9 +239,11 @@ to 512 pixels per axis; oversized responses return HTTP 413.
 - `pixels`: display values in [0, 1], with nulls for unusable pixels.
 - `raw_flux`: un-stretched surface brightness in MJy/sr, including finite flagged values.
 - `variance`: physical variance in (MJy/sr)^2, with squared unit conversion.
-- `flags`: original integer bitmasks; `valid_pixels` records the display mask.
+- `flags`: original integer bitmasks; `valid_pixels` records the strict analysis mask.
+- `display_valid_pixels`: finite, displayable image data; warnings remain visible.
+- `display_warning_pixel_count`: displayed pixels excluded from measurements.
 
-Nonfinite values are null, not zero. Display masks exclude nonfinite image data,
+Nonfinite values are null, not zero. Analysis masks exclude nonfinite image data,
 nonfinite or negative variance, and quality bits other than SOURCE (21) and
 FULLSAMPLE (12). This is a conservative display policy, not a certification for
 photometry. Available flag definitions are carried from the FITS header.

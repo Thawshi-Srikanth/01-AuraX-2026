@@ -6,16 +6,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class SpectralPoint(BaseModel):
+class PixelMeasurement(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
-    artifact_id: str
-    obs_id: str
-    detector: str
-    utc_date: str
-    mjd_start: float
-    processing_version: str
-    source_url: str
-    cached_fits: bool
     pixel_x: int
     pixel_y: int
     target_x: float
@@ -32,6 +24,23 @@ class SpectralPoint(BaseModel):
     )
     snr: float | None = None
     flags: int
+
+
+class SpectralPoint(PixelMeasurement):
+    artifact_id: str
+    obs_id: str
+    detector: str
+    utc_date: str
+    mjd_start: float
+    processing_version: str
+    source_url: str
+    cached_fits: bool
+
+
+class CachedSpectrumResponse(BaseModel):
+    sample: PixelMeasurement | None
+    source_url: str
+    status: Literal["success", "no_usable_data"]
 
 
 class ExcludedObservation(BaseModel):
