@@ -284,9 +284,10 @@ def main():
             assert not frontend_probe.exists() and not backend_probe.exists()
             probes += [frontend_probe, backend_probe]
             frontend_probe.write_text("first")
-            assert get(dev_base + "/" + frontend_probe.name)[2] == b"first"
+            # Vite updates its public-file index asynchronously through its watcher.
+            wait(dev_base + "/" + frontend_probe.name, lambda r: r[2] == b"first")
             frontend_probe.write_text("second")
-            assert get(dev_base + "/" + frontend_probe.name)[2] == b"second"
+            wait(dev_base + "/" + frontend_probe.name, lambda r: r[2] == b"second")
             before = re.findall(
                 r"Started server process \[(\d+)\]",
                 dev.run("logs", "--no-color", "backend"),
