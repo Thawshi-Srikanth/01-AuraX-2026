@@ -462,3 +462,52 @@ def test_bounded_archive_subset_is_sorted_locally_by_observation_time(
     assert [product.obs_id for product in batch.observations] == [
         product.obs_id for product in candidates[0]
     ]
+
+
+@pytest.mark.parametrize(
+    "failure", ["ReadTimeout", "ConnectTimeout", "ConnectionError"]
+)
+def test_real_pyvo_transport_failures_do_not_create_empty_or_poisoned_searches(
+    candidates, monkeypatch, failure
+):
+    import requests
+
+    # Exercise actual PyVO wrapping (including DALFormatError), not a stubbed
+    # ArchiveUnavailable. No request is allowed to reach the network.
+    transport = Mock(
+        side_effect=getattr(requests.exceptions, failure)("test transport failure")
+    )
+    monkeypatch.setattr(requests.Session, "request", transport)
+    monkeypatch.setattr(service, "query_candidates", archive.query_candidates)
+    with TestClient(create_app()) as client:
+        fetch = Mock(side_effect=AssertionError("Metadata failure downloaded FITS"))
+        client.app.state.fits_store.fetch = fetch
+        save = Mock(wraps=client.app.state.cache.set)
+        client.app.state.cache.set = save
+        response = client.post("/api/compare/matches", json=PAYLOAD)
+        assert response.status_code == 503
+        assert response.json() == {
+            "detail": "IRSA metadata is unavailable. Try again later."
+        }
+        assert transport.call_count == 1
+        save.assert_not_called()
+        fetch.assert_not_called()
+
+        # A subsequent successful metadata query must still run and report its
+        # actual unchecked candidates, with no false absence cached by failure.
+        result = Mock(query_status="OK")
+        result.to_table.return_value = metadata_table(candidates[0][:2])
+        tap = Mock()
+        tap.search.return_value = result
+        factory = Mock(return_value=tap)
+        monkeypatch.setattr(archive.pyvo.dal, "TAPService", factory)
+        recovered = client.post("/api/compare/matches", json=PAYLOAD)
+        assert recovered.status_code == 200
+        data = recovered.json()
+        assert data["status"] == "partial" and data["candidate_count"] == 2
+        assert data["pending_count"] == 2 and data["pairs_count"] == 0
+        assert data["state_cached"] is False and data["state_persisted"] is True
+        assert data["new_download_attempts"] == 0
+        factory.assert_called_once()
+        save.assert_called_once()
+        fetch.assert_not_called()

@@ -573,10 +573,33 @@ runs locked dependency installation, code checks, formatting checks, and the tes
 suite on Python 3.11 and 3.12 for backend pushes and pull requests. It can also be
 started manually. These checks do not establish live archive availability.
 
-As of the 2026-11-14 local release check, locked installation and all 341 backend
-tests pass on Python 3.12. The existing real cached-file image/sequence/job checks
+The 2026-11-14 release check passed locked installation and 341 backend tests
+locally on Python 3.12 and in GitHub checks on Python 3.11 and 3.12. The existing real cached-file image/sequence/job checks
 also pass. A live one-day D3 date-search query still timed out after the configured
 45-second metadata read timeout and returned HTTP 503. The full live date-search
 workflow remains unverified; a timeout is not evidence of missing sky coverage.
 The frontend has not yet been migrated, and scientific subtraction and motion
 measurement are not provided by this backend.
+
+
+The 2026-11-14 timeout investigation traced the delay to the archive's
+`POST /TAP/sync` request. One two-candidate, one-day D3 query succeeded in
+34.49 seconds, returning two usable metadata products with truncation correctly
+reported. Later direct record and plane-only probes timed out, as did the actual
+date-search endpoint (HTTP 503 after 45.64 seconds). A minimal GET probe also
+reached its 15-second diagnostic timeout. These probes do not establish an
+archive outage or a query-planner defect, and they do not demonstrate a faster
+transport or query rewrite. No production query or timeout was changed.
+
+Transport-failure regression tests exercise real PyVO exception wrapping, ensure
+failures do not create cached empty results or trigger FITS downloads, and verify
+that a later successful metadata response can make progress. A complete live
+metadata-to-matched-images workflow is still unverified. The existing successful
+cached-image checks do not remove that limitation.
+
+The spatial predicate and plane/artifact join follow the
+[official IRSA SPHEREx cutout tutorial](https://github.com/Caltech-IPAC/irsa-tutorials/blob/main/tutorials/spherex/spherex_cutouts.md).
+[IRSA's TAP documentation](https://irsa.ipac.caltech.edu/docs/program_interface/TAP.html)
+describes both synchronous and asynchronous query modes. Slow metadata discovery
+would need a separately scoped background/resumable workflow; increasing the
+synchronous timeout alone would not establish reliable live availability.
