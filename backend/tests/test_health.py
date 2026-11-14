@@ -22,6 +22,7 @@ def test_health_and_api_contract(monkeypatch):
             "/api/resolve",
             "/api/observations",
             "/api/cutout",
+            "/api/spectrum",
         }
         assert client.get("/api/observations").status_code == 422
 

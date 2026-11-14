@@ -10,11 +10,12 @@ This repository is being built progressively, starting with the backend.
 - Bounded SPHEREx Level 2 observation metadata search through IRSA.
 - Complete-FITS retrieval and calibration-preserving parsing.
 - Image cutout API with physical values, quality masks, and display stretching.
+- Measured nearest-pixel spectral samples with variance-derived uncertainties.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
 
-The image viewer, spectra, comparisons, and the frontend have not been migrated yet.
+The image viewer, catalog lookup, comparisons, and the frontend have not been migrated yet.
 
 ## Run the backend
 
@@ -138,6 +139,46 @@ reprojection, aperture photometry, or integrated flux is performed.
 Unusable archive/calibration content returns HTTP 502. Retrieval or local storage
 failures return 503; invalid product URLs return 400. Invalid query parameters
 return 422. Errors do not return placeholder images.
+
+## Extract spectral samples
+
+```sh
+curl 'http://127.0.0.1:8000/api/spectrum?ra=269.4520769586187&dec=4.693364966576667&limit=2'
+```
+
+This endpoint returns **nearest-pixel surface-brightness samples at a fixed ICRS
+position**, not integrated source flux or PSF/aperture photometry. RA and Dec are
+required. `limit` defaults to 2 and accepts 1–6 observations. Discovery uses the
+same earliest-first bounded metadata search as `/api/observations`. Files are
+fetched serially as 0.03-degree complete cutouts and reuse the validated FITS cache.
+A first request may take time while IRSA searches and delivers files.
+
+For each selected product, the full celestial WCS locates the requested position.
+The nearest pixel supplies the un-stretched IMAGE value, VARIANCE, and FLAGS.
+Wavelength and bandwidth come from the tabulated WCS **at that same pixel**.
+The response records both the fractional target position and sampled pixel, plus
+their angular offset. Samples are sorted by calibrated wavelength, with separate
+artifact identities, detector, processing version, dates, and exact source URLs.
+
+Brightness is reported in MJy/sr; the formal pixel uncertainty is the square root
+of its variance after unit conversion. Systematic calibration uncertainty is not
+included. Negative brightness is retained. Zero variance retains zero reported
+uncertainty and gives null S/N. There is no synthetic noise floor, feature
+injection, smoothing, interpolation, epoch averaging, or padding to 102 channels.
+
+The shared conservative quality policy excludes bad target pixels without moving
+to a neighbour. Excluded observations remain listed with reasons: bad pixel,
+unusable calibration, or download failure. Metadata truncation and rejection are
+reported. Empty archive results are `no_coverage`; all quality-rejected pixels
+are `no_usable_data`; incomplete searches/downloads are `partial`. Metadata service
+failures are HTTP errors, not empty spectra.
+
+Background subtraction, deblending, source identification, aperture corrections,
+and proper-motion propagation are not performed. Different dates can have real
+variability; reprocessed products are correlated. These samples must not be
+presented as a complete, simultaneous source spectrum. See the
+[IRSA spectrophotometry description](https://irsa.ipac.caltech.edu/onlinehelp/spherex/spherex/sp.html)
+for the distinct source-fitting workflow.
 
 ## FITS retrieval and parsing
 

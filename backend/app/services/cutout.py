@@ -9,9 +9,8 @@ from astropy.visualization import LogStretch, ZScaleInterval
 from app.schemas.cutout import CutoutResponse
 from app.services.fits_download import FitsStore
 from app.services.fits_parser import open_observation
+from app.services.quality import INFORMATIONAL_FLAGS, usable_pixels
 
-# SOURCE and FULLSAMPLE are informational; all other bits remain conservative masks.
-INFORMATIONAL_FLAGS = (1 << 21) | (1 << 12)
 MAX_RESPONSE_AXIS = 512
 
 
@@ -44,14 +43,7 @@ def image_cutout(
         variance = (observation.variance * observation.variance_unit).to_value(
             (u.MJy / u.sr) ** 2
         )
-        flag_values = observation.flags.astype(np.uint64)
-        excluded_bits = np.uint64(0xFFFFFFFFFFFFFFFF ^ INFORMATIONAL_FLAGS)
-        valid = (
-            np.isfinite(image)
-            & np.isfinite(variance)
-            & (variance >= 0)
-            & ((flag_values & excluded_bits) == 0)
-        )
+        valid = usable_pixels(image, variance, observation.flags)
         usable = image[valid].astype(np.float64)
         display = np.full(image.shape, np.nan, dtype=np.float64)
         low = high = minimum = maximum = mean = None
