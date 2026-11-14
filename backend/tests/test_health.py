@@ -28,6 +28,9 @@ def test_health_and_api_contract(monkeypatch):
             "/api/compare/matches",
             "/api/compare/sequence",
             "/api/cache/status",
+            "/api/cache/jobs",
+            "/api/cache/jobs/{job_id}",
+            "/api/cache/jobs/{job_id}/cancel",
         }
         assert client.get("/api/observations").status_code == 422
 

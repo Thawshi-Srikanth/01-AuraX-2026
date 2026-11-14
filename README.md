@@ -15,6 +15,7 @@ This repository is being built progressively, starting with the backend.
 - Full-SIP, wavelength-screened visual comparison of two observations.
 - Bounded compatible-date discovery with saved progress and explicit retrieval batches.
 - Two-to-four-observation sequence preparation with every-pair wavelength screening.
+- Quota-limited FITS cache and explicit bounded background cache jobs.
 - Explicit configuration of allowed browser origins.
 - Persistent SQLite metadata cache with namespaces and optional expiry.
 - Automated backend tests.
@@ -441,7 +442,8 @@ greater than zero and at most 1.5 degrees. Connections have a 5-second connect a
 chunks; an in-progress read can still run until its read timeout.
 Validated files are published atomically to the runtime cache; failed temporary
 downloads are removed. Cache identity includes the exact URL, target, and width.
-There is no sample fallback, automatic retry, or background download.
+There is no sample fallback or automatic retry. Background retrieval requires an
+explicit cache job as described below.
 The API uses `backend/cache/fits` by default (alongside the metadata database),
 or `FITS_CACHE_DIR` when supplied. Source data stays out of Git.
 
@@ -494,8 +496,64 @@ payload quota; do not put source data in this runtime directory.
 `GET /api/cache/status` reports configured limits, managed byte/file counts,
 active downloads, protected files, and whether the directory is over quota.
 It is read-only, exposes no local paths, and does not trigger cleanup or downloads.
-There is no public cleanup endpoint or background download worker.
+There is no public cleanup endpoint. Explicit background cache jobs use the same
+storage policy and do not bypass the quota.
 Cache files are ignored by Git; no observation data or seed database is included.
+
+## Background cache jobs
+
+`POST /api/cache/jobs` returns **202** with a job ID and progress snapshot. Supply
+one to four distinct direct IRSA product URLs from an observation search, a fixed
+ICRS target, and an optional cutout width (default `0.03`, maximum `0.5` degrees):
+
+```json
+{
+  "access_urls": ["<direct access_url from /api/observations>"],
+  "ra": 269.4520769586187,
+  "dec": 4.693364966576667,
+  "size_deg": 0.03
+}
+```
+
+Replace the placeholder with an actual product URL; it is not a downloadable
+example. The complete request is validated before anything is queued.
+No archive discovery, recursive fetching, startup downloads, retries, or automatic
+resumption occur. Only the submitted products can be retrieved.
+
+Use `GET /api/cache/jobs/{job_id}` to poll progress and
+`POST /api/cache/jobs/{job_id}/cancel` to cancel remaining work. Cancellation of a
+queued job is immediate. A running transfer finishes or reaches the existing
+transfer timeout before cancellation stops the next product. A running job remains
+`running` with `cancellation_requested: true` until it actually stops.
+
+One worker handles jobs in submission order. At most **four jobs** may be queued
+or running; a full queue returns **429** with `Retry-After`. An identical active
+request reuses its existing job ID. Cached validated files are reused; missing
+files are fetched serially through `FitsStore`, respecting its leases, quota,
+per-file limit, full-file validation, and transfer budgets. Waiting for the shared
+foreground download lock also counts toward the job's **120-second soft budget**.
+The budget is checked between products and while waiting for download admission;
+it does not interrupt a transfer or parser already in progress.
+
+Job states are `queued`, `running`, `completed`, `partial`, `failed`, `cancelled`,
+or `expired`. Per-product states and the `cached` and `size_bytes` fields show
+actual results; failures leave those fields null and report a short error code.
+`partial` means some products succeeded and others failed. An `expired` or
+`cancelled` job can retain completed items; skipped or cancelled items were not
+successfully processed. No response contains local filesystem paths.
+
+A completed job records retrieval success at processing time. Its files can later
+be evicted by normal cache policy; completion does not promise continued residency
+or verify compatibility for a comparison. Continue using the normal image or
+comparison endpoints for scientific preparation.
+
+Jobs and the latest **16 terminal job records** live only in memory in the single
+backend process. Unknown, pruned, or pre-restart IDs return **404**. This is not a
+durable task queue or a public multi-user scheduling service. On application
+shutdown, queued work is cancelled and the worker waits for its current bounded
+transfer to finish without beginning another product. Normal cached reads and
+health requests remain available while background downloads run; foreground
+cache misses share download admission and can wait for the current transfer.
 
 ## Verify
 
