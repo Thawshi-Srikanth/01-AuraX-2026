@@ -2,6 +2,10 @@
 
 Numbered releases use vMAJOR.MINOR.PATCH. Deployment tags and verification links appear on [GitHub Releases](https://github.com/Thawshi-Srikanth/01-AuraX-2026/releases). See [release instructions](docs/releases.md).
 
+## v1.1.1 — 2026-11-15
+
+- Fix Ruff formatting on `example_cache.py`, `test_example_cache.py`, and `scripts/warm_example_cache.py`.
+
 ## v1.1.0 — 2026-11-15
 
 Persistent server-side example-target cache and IRSA outage fallback.

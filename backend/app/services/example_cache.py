@@ -32,9 +32,7 @@ DEFAULT_CUTOUT_SIZE_DEG = 50 * 6.2 / 3600
 EXAMPLE_OBSERVATIONS_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "examples" / "observations.json"
 )
-FALLBACK_NOTICE = (
-    "IRSA is currently unavailable; showing persisted example metadata."
-)
+FALLBACK_NOTICE = "IRSA is currently unavailable; showing persisted example metadata."
 
 # J2025.5 reference sky fields matching frontend/src/data/challengeTargets.ts.
 EXAMPLE_TARGETS: tuple[dict[str, object], ...] = (
@@ -184,9 +182,7 @@ def store_fallback_observations(
     )
 
 
-def seed_bundled_observations(
-    cache: CacheManager, path: Path | None = None
-) -> int:
+def seed_bundled_observations(cache: CacheManager, path: Path | None = None) -> int:
     """Seed bundled example observation queries into the persistent fallback DB."""
     seeded = 0
     for key, payload in _load_bundled_observations(path).items():

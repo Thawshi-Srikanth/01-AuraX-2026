@@ -249,4 +249,3 @@ def test_seed_bundled_observations_on_startup(monkeypatch, tmp_path):
     with TestClient(app):
         assert app.state.cache.get(key, FALLBACK_NAMESPACE) is not None
         assert seed_bundled_observations(app.state.cache, queries_path) == 0
-
