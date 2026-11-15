@@ -1,4 +1,5 @@
 # Containers and deployment
+[Documentation](README.md) · [Development setup](development.md)
 
 Development uses Bun/Vite and Uvicorn reload with mounted source. Production pulls
 prebuilt images and serves the built UI through Nginx. Both use Docker Engine and
@@ -93,6 +94,37 @@ To update, change `IMAGE_TAG` to another successful commit, then repeat `pull` a
 `up`. To roll back, use the previous successful tag and repeat those commands.
 Cache formats must remain compatible when rolling back. Logs rotate at 10 MiB
 with two retained files per service.
+
+## Update an existing deployment
+
+First identify the project name and configuration files used by the running frontend. Do not assume the default project name when updating a previous deployment:
+
+```sh
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Ports}}'
+docker inspect EXISTING_FRONTEND_CONTAINER --format '{{ index .Config.Labels "com.docker.compose.project" }}'
+docker inspect EXISTING_FRONTEND_CONTAINER --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}'
+```
+
+Replace `EXISTING_FRONTEND_CONTAINER` with the name printed by the first command. Keep the same deployment directory, environment settings, project name, and all configuration overlays. Change only `IMAGE_TAG` to the full `sha-COMMIT` of a successfully published and pull-tested image pair.
+
+For the existing **aurax-public** deployment using the production and TLS files, run from its deployment directory:
+
+```sh
+docker compose -p aurax-public -f compose.prod.yml -f compose.tls.yml pull
+docker compose -p aurax-public -f compose.prod.yml -f compose.tls.yml up -d --no-build --wait --wait-timeout 150
+docker compose -p aurax-public -f compose.prod.yml -f compose.tls.yml ps
+docker compose -p aurax-public -f compose.prod.yml -f compose.tls.yml images
+```
+
+Use your actual project name for other installations. HTTP-only installations omit the TLS overlay. A routine update does not require `down`; preserving the project name reuses its cache volume and replaces its services. Do not use `down -v` or delete volumes to refresh an image. A newly created default project does not share the existing project's volume.
+
+### Port 80 already allocated
+
+A common cause is starting a second project named `aurax` while `aurax-public` still owns ports 80 and 443. Inspect the running containers and labels above. Update the original project; do not stop an unidentified proxy or change TLS just to free the port. If you have confirmed an accidental duplicate project, remove only that duplicate without volume deletion.
+
+### Old page or video placeholder
+
+Compare the running frontend tag with the selected release. A successful `pull` alone does not replace a running container, and a frontend that failed to start cannot serve the new UI. Complete `up`, check health and ports, then hard-refresh or use a private browser window. If a reverse proxy/CDN is involved, inspect its cache after verifying the origin container. Keep the previous successful tag for rollback.
 
 ## Optional Nginx HTTPS
 
