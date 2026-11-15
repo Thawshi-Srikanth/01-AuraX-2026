@@ -1,0 +1,28 @@
+{
+  "project": "AURAx",
+  "updated": "2026-11-15",
+  "tools": [
+    {
+      "name": "OpenAI Codex",
+      "uses": [
+        "coding assistance",
+        "debugging",
+        "tests",
+        "interface refinement",
+        "documentation"
+      ]
+    },
+    {
+      "name": "Google Gemini",
+      "uses": [
+        "coding assistance"
+      ],
+      "scope_note": "Team-confirmed use; no per-file authorship claim."
+    }
+  ],
+  "science_data_origin": "Public SPHEREx FITS products through NASA/IPAC IRSA; SIMBAD catalog references.",
+  "synthetic_replacement_observations": false,
+  "screenshots": "Direct live-app captures; see docs/images/README.md.",
+  "older_illustration_provenance": "Not fully established; asset-by-asset source and generation records still required.",
+  "disclosure": "docs/ai-disclosure.md"
+}
