@@ -10,8 +10,10 @@ from pydantic import BaseModel
 
 from app.schemas.comparison_matches import MatchRequest
 from app.schemas.observation import SPHERExObservation
+from app.services.example_cache import get_fallback_comparison_candidates
 from app.services.observations import (
     IRSA_TAP_URL,
+    ArchiveUnavailable,
     InvalidArchiveResponse,
     parse_observation,
     query_sia,
@@ -50,10 +52,22 @@ class CandidateBatch(BaseModel):
     )
 
 
-def query_candidates(request: MatchRequest):
-    if request.time_sampling == "spread":
-        return query_spread_candidates(request)
-    return query_window(request)
+def query_candidates(request: MatchRequest, cache=None):
+    try:
+        if request.time_sampling == "spread":
+            return query_spread_candidates(request)
+        return query_window(request)
+    except (
+        ArchiveUnavailable,
+        InvalidArchiveResponse,
+        pyvo.dal.DALAccessError,
+        requests.RequestException,
+        OSError,
+    ):
+        fallback = get_fallback_comparison_candidates(request, cache=cache)
+        if fallback is not None:
+            return fallback
+        raise
 
 
 def query_window(request: MatchRequest, *, sia_only=False):

@@ -2,6 +2,14 @@
 
 Numbered releases use vMAJOR.MINOR.PATCH. Deployment tags and verification links appear on [GitHub Releases](https://github.com/Thawshi-Srikanth/01-AuraX-2026/releases). See [release instructions](docs/releases.md).
 
+## v1.1.0 — 2026-11-15
+
+Persistent server-side example-target cache and IRSA outage fallback.
+
+- Added `app.services.example_cache` (`python -m app.services.example_cache`) and `scripts/warm_example_cache.py` to warm `aurax.db` and `FITS_CACHE_DIR` on the server without bundling `.fits` images in the repository.
+- Added persistent non-expiring observation fallback (`observations:fallback:v1`) for example targets and comparison candidates when IRSA TAP/SIA is unavailable, while continuing live IRSA queries whenever IRSA is reachable.
+- Added persistent FITS cutout pinning (`.aurax-fits-pinned`) in `FitsCachePolicy` / `FitsStore` so warmed example cutouts survive idle expiry and LRU eviction.
+
 ## v1.0.0 — 2026-11-15
 
 First numbered release of the existing AURAx application.

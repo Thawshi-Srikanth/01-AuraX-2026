@@ -17,6 +17,11 @@ from urllib3.util.retry import Retry
 
 from app.db.cache import CacheManager
 from app.schemas.observation import ObservationsResponse, SPHERExObservation
+from app.services.example_cache import (
+    get_fallback_observations,
+    is_example_position,
+    store_fallback_observations,
+)
 
 IRSA_TAP_URL = "https://irsa.ipac.caltech.edu/TAP"
 IRSA_SIA_URL = "https://irsa.ipac.caltech.edu/SIA"
@@ -249,7 +254,6 @@ def find_observations(ra: float, dec: float, limit: int, cache: CacheManager):
                 return result.model_copy(update={"cached": True})
         except (ValidationError, TypeError):
             pass
-    table = query_archive(ra, dec, limit)
     required_columns = {
         "time_bounds_lower",
         "time_exposure",
@@ -259,8 +263,21 @@ def find_observations(ra: float, dec: float, limit: int, cache: CacheManager):
         "uri",
         "artifactid",
     }
-    if table is None or not required_columns.issubset(table.colnames):
-        raise InvalidArchiveResponse
+    try:
+        table = query_archive(ra, dec, limit)
+        if table is None or not required_columns.issubset(table.colnames):
+            raise InvalidArchiveResponse
+    except (
+        ArchiveUnavailable,
+        InvalidArchiveResponse,
+        pyvo.dal.DALAccessError,
+        requests.RequestException,
+        OSError,
+    ):
+        fallback = get_fallback_observations(ra, dec, limit, cache)
+        if fallback is not None:
+            return fallback
+        raise
     truncated = len(table) > limit or bool(table.meta.get("overflow", False))
     observations = []
     rejected = 0
@@ -314,4 +331,6 @@ def find_observations(ra: float, dec: float, limit: int, cache: CacheManager):
         cache.set(
             key, result.model_dump(mode="json"), CACHE_NAMESPACE, CACHE_TTL_SECONDS
         )
+        if is_example_position(ra, dec):
+            store_fallback_observations(cache, result)
     return result

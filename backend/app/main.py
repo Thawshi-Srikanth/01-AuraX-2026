@@ -22,6 +22,7 @@ from app.routers.spectrum import router as spectrum_router
 from app.services.cache_jobs import CacheJobs
 from app.services.cache_policy import DEFAULT_IDLE_SECONDS, DEFAULT_QUOTA_BYTES
 from app.services.comparison_jobs import ComparisonJobs
+from app.services.example_cache import seed_bundled_observations
 from app.services.fits_download import FitsStore
 from app.services.fits_parser import MAX_FILE_BYTES
 
@@ -80,6 +81,7 @@ async def lifespan(application: FastAPI):
     )
     application.state.fits_store.cleanup()
     application.state.cache.purge_expired()
+    seed_bundled_observations(application.state.cache)
     application.state.cache_jobs = CacheJobs(application.state.fits_store)
     try:
         application.state.comparison_jobs = ComparisonJobs(

@@ -181,7 +181,15 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore, control=N
         except (ValidationError, TypeError):
             pass
     if state is None:
-        state = SearchState(scope=scope, batch=query_candidates(request))
+        try:
+            batch = query_candidates(request)
+        except Exception:
+            from app.services.example_cache import get_fallback_comparison_candidates
+
+            batch = get_fallback_comparison_candidates(request, cache=cache)
+            if batch is None:
+                raise
+        state = SearchState(scope=scope, batch=batch)
     if request.retry_failed:
         state.checks = {
             key: check

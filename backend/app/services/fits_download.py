@@ -125,6 +125,15 @@ class FitsStore:
     def status(self):
         return {**self.policy.status(), "max_file_bytes": self.max_bytes}
 
+    def pin(self, access_url: str, ra: float, dec: float, size_deg: float = 0.03):
+        """Protect a validated cached cutout from idle expiry and LRU eviction."""
+        request_url = cutout_url(access_url, ra, dec, size_deg)
+        key = hashlib.sha256(request_url.encode()).hexdigest()
+        path = self.directory / f"{key}.fits"
+        if not path.is_file():
+            raise FileNotFoundError("Cutout must be cached before pinning")
+        self.policy.pin_persistent(path)
+
     def get_cached(
         self, access_url: str, ra: float, dec: float, size_deg: float = 0.03
     ):

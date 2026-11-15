@@ -13,6 +13,7 @@ DATA_NAME = re.compile(r"[0-9a-f]{64}\.fits")
 PART_NAME = re.compile(r"\.[0-9a-f]{64}\.[A-Za-z0-9_-]+\.part")
 OWNER_NAME = ".aurax-fits-cache"
 OWNER_CONTENT = "AURAx FITS cache v1\n"
+PINNED_NAME = ".aurax-fits-pinned"
 DEFAULT_QUOTA_BYTES = 512 * 1024 * 1024
 DEFAULT_IDLE_SECONDS = 7 * 86400
 STALE_PART_SECONDS = 3600
@@ -87,7 +88,9 @@ class FitsCachePolicy:
         if not self.directory.exists():
             return result, foreign
         for path in self.directory.iterdir():
-            if path.name == OWNER_NAME:
+            if path.name == OWNER_NAME or (
+                path.name == PINNED_NAME and self._regular(path) is not None
+            ):
                 continue
             kind = (
                 "fits"
@@ -190,6 +193,33 @@ class FitsCachePolicy:
         path.unlink()
         return True
 
+    def _pinned_names(self):
+        marker = self.directory / PINNED_NAME
+        if self._regular(marker) is None:
+            return set()
+        try:
+            return {
+                line.strip()
+                for line in marker.read_text(encoding="utf-8").splitlines()
+                if DATA_NAME.fullmatch(line.strip())
+            }
+        except OSError:
+            return set()
+
+    def pin_persistent(self, path):
+        path = Path(path)
+        with self.state.writer, self.state.lock:
+            self._ensure_owned(create=True)
+            self.validate_path(path)
+            if not DATA_NAME.fullmatch(path.name):
+                raise CachePolicyError("Only validated FITS files can be pinned")
+            pinned = self._pinned_names()
+            if path.name in pinned:
+                return
+            pinned.add(path.name)
+            marker = self.directory / PINNED_NAME
+            marker.write_text("\n".join(sorted(pinned)) + "\n", encoding="utf-8")
+
     def cleanup(self, required_bytes=0):
         if required_bytes < 0 or required_bytes > self.quota_bytes:
             raise CachePolicyError("Requested cache reservation exceeds its quota")
@@ -203,12 +233,17 @@ class FitsCachePolicy:
                     "capacity_available": True,
                 }
             entries, _ = self._entries()
+            pinned = self._pinned_names()
             total = sum(info.st_size for _, _, info in entries)
             removed_files = removed_bytes = 0
             now = time.time()
             remaining = []
             for path, kind, info in entries:
-                protected = self.state.pins.get(path) or path in self.state.active_parts
+                protected = (
+                    self.state.pins.get(path)
+                    or path in self.state.active_parts
+                    or (kind == "fits" and path.name in pinned)
+                )
                 age = max(0, now - info.st_mtime)
                 expired = (kind == "part" and age >= STALE_PART_SECONDS) or (
                     kind == "fits"
@@ -227,6 +262,7 @@ class FitsCachePolicy:
                 if kind == "fits"
                 and not self.state.pins.get(path)
                 and path not in self.state.active_parts
+                and path.name not in pinned
             ]
             # Keep useful entries when protected bytes prevent admission.
             can_recover = (
