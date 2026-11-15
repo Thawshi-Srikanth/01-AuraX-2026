@@ -15,7 +15,7 @@ interface LandingViewProps {
 
 const EXAMPLES = CHALLENGE_TARGETS;
 const HOME_FAQ = [
-  { question: 'Do I need to know astronomy to start?', answer: 'No. Choose one of the five sample targets to fill its coordinates, then select Load image sequence. Start by browsing the dates and reading the details for one image.' },
+  { question: 'Do I need to know astronomy to start?', answer: 'No. Choose one of the five sample targets to open its images immediately. For your own coordinates, enter RA and Dec and select Open images. Start by browsing the dates and reading the details for one image.' },
   { question: 'Which coordinate format should I enter?', answer: 'Use decimal degrees in the ICRS frame. RA must be at least 0 and less than 360; Dec must be between −90 and +90. The samples already use the right format.' },
   { question: 'What do the detector colors mean?', answer: 'The six colors identify SPHEREx detectors and their wavelength ranges. They help you follow which detector made an observation; they are not the natural colors of the objects. The image display has its own colormap.' },
   { question: 'Why are some dates or images missing?', answer: 'Available observations depend on sky coverage, the archive release, your filters, and usable data. This app does not guarantee a complete observation history. Try a broader date range or another detector; an empty result does not mean the object is absent.' },
@@ -80,6 +80,11 @@ export function LandingView({ onNavigate, onTargetResolved, activeTarget }: Land
     setErrors({});
     setNameError(null);
     raRef.current?.focus();
+  }
+
+  function openTarget(target: ResolvedTarget) {
+    onTargetResolved(target);
+    onNavigate('Observations');
   }
 
   function fillExample(example: typeof EXAMPLES[number]) {
@@ -151,40 +156,42 @@ export function LandingView({ onNavigate, onTargetResolved, activeTarget }: Land
             <p className="landing-lead">Start with a patch of sky. Explore its infrared images and compare dates to look for a point that moves.</p>
 
             <form className="landing-sequence-form" onSubmit={event => { void submitCoordinates(event); }} noValidate aria-label="Load a sky image sequence">
-              <div className="landing-coordinate-fields">
-                <div>
-                  <label htmlFor="landing-ra">Right ascension <span>RA · degrees</span></label>
-                  <input ref={raRef} id="landing-ra" type="text" inputMode="decimal" value={ra} onChange={event => {
-                    setRa(event.target.value);
-                    setPositionTarget(null);
-                    setPositionNotice('');
-                    setErrors(current => ({ ...current, ra: undefined }));
-                  }} aria-invalid={!!errors.ra} aria-describedby={errors.ra ? 'landing-ra-error' : 'landing-coordinate-help'} autoComplete="off" spellCheck={false} disabled={searching} />
-                  {errors.ra && <p id="landing-ra-error" className="landing-error" role="alert">{errors.ra}</p>}
+              <div className="landing-coordinate-entry">
+                <div className="landing-coordinate-fields">
+                  <div>
+                    <label htmlFor="landing-ra">Right ascension <span>RA · degrees</span></label>
+                    <input ref={raRef} id="landing-ra" type="text" inputMode="decimal" value={ra} onChange={event => {
+                      setRa(event.target.value);
+                      setPositionTarget(null);
+                      setPositionNotice('');
+                      setErrors(current => ({ ...current, ra: undefined }));
+                    }} aria-invalid={!!errors.ra} aria-describedby={errors.ra ? 'landing-ra-error' : 'landing-coordinate-help'} autoComplete="off" spellCheck={false} disabled={searching} />
+                    {errors.ra && <p id="landing-ra-error" className="landing-error" role="alert">{errors.ra}</p>}
+                  </div>
+                  <div>
+                    <label htmlFor="landing-dec">Declination <span>Dec · degrees</span></label>
+                    <input ref={decRef} id="landing-dec" type="text" inputMode="decimal" value={dec} onChange={event => {
+                      setDec(event.target.value);
+                      setPositionTarget(null);
+                      setPositionNotice('');
+                      setErrors(current => ({ ...current, dec: undefined }));
+                    }} aria-invalid={!!errors.dec} aria-describedby={errors.dec ? 'landing-dec-error' : 'landing-coordinate-help'} autoComplete="off" spellCheck={false} disabled={searching} />
+                    {errors.dec && <p id="landing-dec-error" className="landing-error" role="alert">{errors.dec}</p>}
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="landing-dec">Declination <span>Dec · degrees</span></label>
-                  <input ref={decRef} id="landing-dec" type="text" inputMode="decimal" value={dec} onChange={event => {
-                    setDec(event.target.value);
-                    setPositionTarget(null);
-                    setPositionNotice('');
-                    setErrors(current => ({ ...current, dec: undefined }));
-                  }} aria-invalid={!!errors.dec} aria-describedby={errors.dec ? 'landing-dec-error' : 'landing-coordinate-help'} autoComplete="off" spellCheck={false} disabled={searching} />
-                  {errors.dec && <p id="landing-dec-error" className="landing-error" role="alert">{errors.dec}</p>}
-                </div>
+                <button type="submit" className="landing-primary landing-load-sequence" disabled={searching}>Open images <ArrowRight size={16} aria-hidden="true" /></button>
               </div>
               <p id="landing-coordinate-help" className="landing-field-hint">RA: 0–360° (excluding 360). Dec: −90° to +90°. Frame: ICRS.</p>
 
               <div className="landing-examples">
-                <p>Try a challenge target to fill the coordinates.</p>
+                <p>Open images for a challenge target.</p>
                 <div className="landing-example-list" aria-label="Example sky positions">
-                  {EXAMPLES.map(example => <button type="button" key={example.name} disabled={searching} aria-pressed={positionTarget?.provenance.startsWith('Challenge benchmark:') && positionTarget.canonical_name === example.name} onClick={() => fillExample(example)}>{example.name}</button>)}
-                  <button type="button" disabled={searching} onClick={() => { const position = CHALLENGE_TARGETS[2].challengePosition; fillPosition(startingPosition(position.ra, position.dec, 'WISE 0855 · supplied coordinates', 'Challenge-supplied coordinates; epoch unspecified, not propagated.')); }}>WISE 0855 · supplied coordinates</button>
+                  {EXAMPLES.map(example => <button type="button" key={example.name} disabled={searching} onClick={() => openTarget(challengeTarget(example))}>{example.name}</button>)}
+                  <button type="button" disabled={searching} onClick={() => { const position = CHALLENGE_TARGETS[2].challengePosition; openTarget(startingPosition(position.ra, position.dec, 'WISE 0855 · supplied coordinates', 'Challenge-supplied coordinates; epoch unspecified, not propagated.')); }}>WISE 0855 · supplied coordinates</button>
                 </div>
               </div>
               <p className="landing-position-notice" role="status">{positionNotice}</p>
               {positionTarget?.benchmark && <p className="landing-field-hint">Fixed field at J2025.5 from an approximate proper-motion estimate. Parallax and perspective effects are not included. <a href={positionTarget.benchmark.source_url} target="_blank" rel="noreferrer">Catalog reference ↗</a> Your own RA/Dec inputs are used unchanged.</p>}
-              <button type="submit" className="landing-primary landing-load-sequence" disabled={searching}>Load image sequence <ArrowRight size={16} aria-hidden="true" /></button>
             </form>
             <a className="landing-text-action landing-checked-example" href={CHECKED_COMPARISON_URL}>Try a checked Epsilon Indi B time comparison <ArrowRight size={14} aria-hidden="true" /></a>
 
@@ -197,7 +204,7 @@ export function LandingView({ onNavigate, onTargetResolved, activeTarget }: Land
         </section>
 
         <section className="landing-position-support landing-section" aria-labelledby="position-support-title">
-          <div><p className="landing-eyebrow">A place to begin</p><h2 id="position-support-title">New to sky coordinates?</h2><p className="landing-body">RA and Dec work like an address in the sky. Right ascension runs around it; declination measures north or south of the celestial equator. Choose a sample above, or look up a familiar object to fill its position.</p></div>
+          <div><p className="landing-eyebrow">A place to begin</p><h2 id="position-support-title">New to sky coordinates?</h2><p className="landing-body">RA and Dec work like an address in the sky. Right ascension runs around it; declination measures north or south of the celestial equator. Choose a sample above to open its images, or look up a familiar object to fill its position.</p></div>
           <div className="landing-position-lookup">
               <form className="landing-name-form" onSubmit={submitName} noValidate aria-label="Look up coordinates by name" aria-busy={searching}>
                 <label htmlFor="landing-name">Object name</label>
@@ -209,7 +216,7 @@ export function LandingView({ onNavigate, onTargetResolved, activeTarget }: Land
                   <button type="submit" className="landing-coordinate-submit" disabled={searching}>{searching ? 'Looking up…' : 'Fill coordinates'}</button>
                 </div>
                 {nameError && <p className="landing-error" id="landing-name-error" role="alert">{nameError}</p>}
-                <p id="landing-name-help" className="landing-field-hint">This fills the position above. Then choose Load image sequence.</p>
+                <p id="landing-name-help" className="landing-field-hint">This fills the position above. Then choose Open images beside the coordinates.</p>
                 <span className="landing-search-status" role="status">{searching ? 'Looking up the sky position.' : ''}</span>
               </form>
             <button type="button" className="landing-sky-map landing-text-action" onClick={event => { void submitCoordinates(event, 'Explore'); }} disabled={searching}>Open sky map <ArrowRight size={15} aria-hidden="true" /></button>
