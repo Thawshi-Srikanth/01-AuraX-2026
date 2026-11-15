@@ -19,6 +19,7 @@
 - [Architecture](architecture.md): components, request flow, and repository layout.
 - [API reference](api-reference.md): endpoint examples and response constraints.
 - [Data pipeline](data-pipeline.md): calibrated FITS parsing, caching, quotas, and background cache jobs.
+- [Releases and versions](releases.md): numbered tags, server updates, and publishing the next version.
 - [Deployment](deployment.md): production images, HTTPS, updates, rollback, and project-name conflicts.
 
 ## Context and attribution

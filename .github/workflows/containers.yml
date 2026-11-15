@@ -3,6 +3,7 @@ name: Container checks and images
 on:
   push:
     branches: [main]
+    tags: ["v*"]
     paths:
       - "docker/**"
       - ".dockerignore"
@@ -36,13 +37,25 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+          fetch-depth: 0
+      - name: Validate release version and source
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Use a full version such as v1.0.0 or v1.2.0." >&2
+            exit 1
+          fi
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
       - name: Build images and exercise isolated stacks
         run: python3 scripts/check_containers.py
 
   publish:
     name: Publish ${{ matrix.component }}
     needs: check
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -59,7 +72,19 @@ jobs:
       - name: Image name
         id: image
         shell: bash
-        run: echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+        env:
+          COMPONENT: ${{ matrix.component }}
+        run: |
+          prefix="ghcr.io/${GITHUB_REPOSITORY,,}"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          {
+            echo 'tags<<TAGS'
+            echo "$prefix-$COMPONENT:sha-$GITHUB_SHA"
+            if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+              echo "$prefix-$COMPONENT:$GITHUB_REF_NAME"
+            fi
+            echo 'TAGS'
+          } >> "$GITHUB_OUTPUT"
       - name: Set up ARM emulation
         uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
       - name: Set up Buildx
@@ -70,7 +95,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Publish matching commit tags
+      - name: Publish matching image tags
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
@@ -78,7 +103,7 @@ jobs:
           target: production
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.image.outputs.prefix }}-${{ matrix.component }}:sha-${{ github.sha }}
+          tags: ${{ steps.image.outputs.tags }}
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -87,7 +112,11 @@ jobs:
       - name: Deployment tag
         env:
           IMAGE: ${{ steps.image.outputs.prefix }}-${{ matrix.component }}:sha-${{ github.sha }}
-        run: echo "Published $IMAGE" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "Published $IMAGE" >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            echo "Version: $GITHUB_REF_NAME (wait for deployment verification)" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   verify-published:
     name: Deploy published images without a build
@@ -104,6 +133,50 @@ jobs:
         run: |
           export IMAGE_PREFIX="ghcr.io/${GITHUB_REPOSITORY,,}"
           export IMAGE_TAG="sha-${GITHUB_SHA}"
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            export IMAGE_TAG="$GITHUB_REF_NAME"
+          fi
           docker compose -f docker/compose.prod.yml pull
           python3 scripts/check_containers.py --production-only --skip-build \
             --image-prefix "$IMAGE_PREFIX" --tag "$IMAGE_TAG"
+
+  release:
+    name: Publish verified version release
+    needs: verify-published
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Create release with deployment tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "Release already exists; preserving its notes."
+            exit 0
+          fi
+          {
+            echo "## Deploy this version"
+            echo
+            echo "Both matching frontend/backend images were published and the version-tagged pair passed the pull-only deployment check."
+            echo
+            echo "Set this in your deployment .env:"
+            echo
+            echo "IMAGE_TAG=$RELEASE_TAG"
+            echo
+            echo "Source commit: $GITHUB_SHA"
+            echo
+            echo "Keep your existing Compose project name and HTTPS configuration when running pull and up."
+            echo
+            echo "Deployment guide: https://github.com/$GITHUB_REPOSITORY/blob/$RELEASE_TAG/docs/deployment.md"
+            echo
+            echo "Changes: https://github.com/$GITHUB_REPOSITORY/blob/$RELEASE_TAG/CHANGELOG.md"
+            echo
+            echo "Verification run: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > /tmp/aurax-release-notes.md
+          gh release create "$RELEASE_TAG" --verify-tag --title "AURAx $RELEASE_TAG" --notes-file /tmp/aurax-release-notes.md

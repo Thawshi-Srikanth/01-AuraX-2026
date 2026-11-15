@@ -2,7 +2,7 @@
 name: aurax
 services:
   backend:
-    image: ${IMAGE_PREFIX:-ghcr.io/thawshi-srikanth/01-aurax-2026}-backend:${IMAGE_TAG:?Set IMAGE_TAG to a successful published sha-COMMIT tag}
+    image: ${IMAGE_PREFIX:-ghcr.io/thawshi-srikanth/01-aurax-2026}-backend:${IMAGE_TAG:?Set IMAGE_TAG to a verified version or sha-COMMIT tag}
     init: true
     restart: unless-stopped
     environment:
@@ -20,7 +20,7 @@ services:
       options: {max-size: 10m, max-file: '2'}
 
   frontend:
-    image: ${IMAGE_PREFIX:-ghcr.io/thawshi-srikanth/01-aurax-2026}-frontend:${IMAGE_TAG:?Set IMAGE_TAG to a successful published sha-COMMIT tag}
+    image: ${IMAGE_PREFIX:-ghcr.io/thawshi-srikanth/01-aurax-2026}-frontend:${IMAGE_TAG:?Set IMAGE_TAG to a verified version or sha-COMMIT tag}
     init: true
     restart: unless-stopped
     ports:

@@ -57,7 +57,7 @@ General comparisons can mix passbands. A display difference alone does not estab
 | Understand the system | [Architecture](docs/architecture.md) |
 | Call the API | [API reference](docs/api-reference.md) |
 | Understand FITS retrieval and caching | [Data pipeline](docs/data-pipeline.md) |
-| Deploy or update an existing server | [Deployment](docs/deployment.md) |
+| Deploy or update an existing server | [Deployment](docs/deployment.md) · [Versions and releases](docs/releases.md) |
 | Contribute a change | [Contributing](CONTRIBUTING.md) |
 | Learn why we built it | [Behind the project](docs/project-story.md) |
 | Check evidence and limits | [Challenge audit](docs/challenge-audit-2026-11-15.md) |

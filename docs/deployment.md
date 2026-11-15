@@ -38,11 +38,9 @@ stacks before publishing production images for `linux/amd64` and `linux/arm64`:
 - `ghcr.io/thawshi-srikanth/01-aurax-2026-backend:sha-COMMIT`
 - `ghcr.io/thawshi-srikanth/01-aurax-2026-frontend:sha-COMMIT`
 
-`COMMIT` is the full 40-character Git commit SHA from a successful workflow. Both
-publish jobs and the final pull-only deployment check must finish before
-deploying that tag. There is no mutable `latest` tag. Main builds publish releases.
-Pull requests check containers without publishing. A manual workflow run on main
-can republish a commit.
+Numbered releases also publish matching tags such as `v1.0.0`. Choose a completed [GitHub Release](https://github.com/Thawshi-Srikanth/01-AuraX-2026/releases) and use `IMAGE_TAG=v1.0.0`, or use a verified full `sha-COMMIT` tag. `COMMIT` is the full 40-character source SHA. Both publish jobs and the pull-only deployment check must succeed. The GitHub Release is created only after the version-tagged pair passes deployment verification.
+
+Main builds publish SHA tags; version tags publish numbered releases. Pull requests check containers without publishing. No mutable `latest`, `v1`, or `v1.2` aliases are published. See [versioning and release creation](releases.md).
 
 Package visibility is separate from repository visibility. For anonymous pulls,
 set both GHCR packages to Public in GitHub package settings. For private packages,
@@ -56,7 +54,7 @@ Run these commands from `docker/`, or a deployment directory containing the copi
 configuration files. Only `compose.prod.yml` and a configured `.env` are required
 on the host.
 Application source and server-side builds are unnecessary. Copy `.env.example` to
-`.env` and set `IMAGE_TAG=sha-COMMIT` to a successful workflow tag. The default
+`.env` and set `IMAGE_TAG` to a completed release (for example `v1.0.0`) or a verified full `sha-COMMIT` tag. The default
 image prefix points to this repository.
 
 ```sh
@@ -105,7 +103,7 @@ docker inspect EXISTING_FRONTEND_CONTAINER --format '{{ index .Config.Labels "co
 docker inspect EXISTING_FRONTEND_CONTAINER --format '{{ index .Config.Labels "com.docker.compose.project.config_files" }}'
 ```
 
-Replace `EXISTING_FRONTEND_CONTAINER` with the name printed by the first command. Keep the same deployment directory, environment settings, project name, and all configuration overlays. Change only `IMAGE_TAG` to the full `sha-COMMIT` of a successfully published and pull-tested image pair.
+Replace `EXISTING_FRONTEND_CONTAINER` with the name printed by the first command. Keep the same deployment directory, environment settings, project name, and all configuration overlays. Change only `IMAGE_TAG` to a completed version release or the full `sha-COMMIT` of a successfully published and pull-tested image pair.
 
 For the existing **aurax-public** deployment using the production and TLS files, run from its deployment directory:
 
