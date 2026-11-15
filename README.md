@@ -4,7 +4,19 @@ Explore the changing infrared sky with real NASA SPHEREx observations.
 
 [Open the live app](https://aurax.thawshi.com) · [User guide](docs/user-guide.md) · [Documentation](docs/README.md) · [Contribute](CONTRIBUTING.md)
 
-![AURAx Home, captured from the live application](docs/images/live-home.jpg)
+![AURA project cover: logo against a purple star-field illustration](docs/images/aura-cover.png)
+
+[![Frontend checks](https://github.com/Thawshi-Srikanth/01-AuraX-2026/actions/workflows/frontend.yml/badge.svg?branch=main)](https://github.com/Thawshi-Srikanth/01-AuraX-2026/actions/workflows/frontend.yml)
+[![Backend checks](https://github.com/Thawshi-Srikanth/01-AuraX-2026/actions/workflows/backend.yml/badge.svg?branch=main)](https://github.com/Thawshi-Srikanth/01-AuraX-2026/actions/workflows/backend.yml)
+[![Container checks](https://github.com/Thawshi-Srikanth/01-AuraX-2026/actions/workflows/containers.yml/badge.svg?branch=main)](https://github.com/Thawshi-Srikanth/01-AuraX-2026/actions/workflows/containers.yml)
+
+[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Python](https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![AI assistance disclosed](https://img.shields.io/badge/AI_assistance-Codex_%2B_Gemini-6554C0)](docs/ai-disclosure.md)
+
 
 Enter a sky coordinate or choose a target, inspect calibrated infrared cutouts, and compare two to four observations on a shared sky grid. Animated playback, wavelength information, quality masks, and original data references help you investigate an apparent change.
 
@@ -39,6 +51,8 @@ General comparisons can mix passbands. A display difference alone does not estab
 | I want to… | Start here |
 | --- | --- |
 | Use the app with screenshots | [User walkthrough](docs/user-guide.md) |
+| Navigate the sky | [Sky map guide](docs/sky-map-guide.md) |
+| Browse and inspect observations | [Images guide](docs/images-guide.md) |
 | Run it on my computer | [Development setup](docs/development.md) |
 | Understand the system | [Architecture](docs/architecture.md) |
 | Call the API | [API reference](docs/api-reference.md) |
@@ -48,6 +62,21 @@ General comparisons can mix passbands. A display difference alone does not estab
 | Learn why we built it | [Behind the project](docs/project-story.md) |
 | Check evidence and limits | [Challenge audit](docs/challenge-audit-2026-11-15.md) |
 | Read credits and AI assistance disclosure | [Credits](docs/credits.md) · [AI disclosure](docs/ai-disclosure.md) |
+
+## Tools and technology
+
+| Area | Tools used |
+| --- | --- |
+| Web interface | React, TypeScript, Vite, Tailwind CSS, Lucide icons |
+| API | Python, FastAPI, Uvicorn |
+| Astronomy and image processing | Astropy, NumPy, PyVO, Reproject, Photutils |
+| Storage and caching | SQLite metadata cache and quota-limited local FITS storage |
+| Documentation | Markdown, Mermaid, KaTeX |
+| Development and verification | uv, Bun, pytest, Ruff, ESLint |
+| Deployment | Docker Compose, Nginx, GitHub Actions, GitHub Container Registry |
+| Coding assistance | OpenAI Codex and Google Gemini; [scope and disclosure](docs/ai-disclosure.md) |
+
+See [software and data credits](docs/credits.md) for source links and the dependency manifests for exact constraints: [frontend](frontend/package.json), [backend](backend/pyproject.toml).
 
 ## Develop locally
 

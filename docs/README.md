@@ -4,6 +4,8 @@
 
 ## Use the application
 
+- [Sky map guide](sky-map-guide.md): projections, layers, reference regions, and opening coordinates.
+- [Images guide](images-guide.md): filters, cutouts, metadata tabs, playback, saving, and failures.
 - [Screenshot walkthrough](user-guide.md): target entry, a real comparison, quality checks, and common failures.
 - [Interactive guide](https://aurax.thawshi.com/docs): seven chapters on observations, optics, coordinates, brightness, wavelengths, comparison, and archive access.
 - [Scientific limits](scientific-limits.md): what the displayed images and spectral samples do and do not establish.

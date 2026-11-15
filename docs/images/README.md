@@ -1,4 +1,4 @@
-# Screenshot provenance
+# Documentation image provenance
 
 [Walkthrough](../user-guide.md) · [Documentation](../README.md)
 
@@ -23,6 +23,26 @@ The existing PNG/GIF files in [validation](../validation) are recorded scientifi
 ## Interface changes after capture
 
 These live captures precede the Home shortcut update: example-object buttons now open Images immediately, and the coordinate action is labelled **Open images** and sits beside the inputs on desktop. The walkthrough describes that updated behavior. Comparison and quality captures remain representative of the checked workflow.
+
+## Additional workspace captures
+
+Captured from the live application on 15 November 2026 at 1280 × 720 pixels:
+
+| File | Source and visible state |
+| --- | --- |
+| [live-sky-map-layers.jpg](live-sky-map-layers.jpg) | /sky, 3D reference view with Layers open |
+| [live-sky-map-flat.jpg](live-sky-map-flat.jpg) | /sky, Flat panoramic reference view |
+| [live-images-archive-error.jpg](live-images-archive-error.jpg) | /images for the Epsilon Indi B field; archive Service Unavailable, no image displayed |
+| [live-images-filters.jpg](live-images-filters.jpg) | Same Images field after one retry also failed; detector choices open alongside the archive error |
+
+Images source:
+https://aurax.thawshi.com/images?target=Epsilon+Indi+B&ra=331.0956582664693&dec=-56.80030697842581&detector=All&size=50&stretch=zscale
+
+These captures support the [Sky map](../sky-map-guide.md) and [Images](../images-guide.md) guides. They do not certify a successful new metadata query or loaded observation in the Images tab. Reference map regions are not live archive footprints. Existing comparison screenshots document a separate successful real-image preparation.
+
+## README cover
+
+[aura-cover.png](aura-cover.png) was supplied by the maintainer on 15 November 2026 and copied byte-for-byte from the provided file. SHA-256: 8a666f4634343eb6d229d47d8d6acdd308bb16f83ce599e77d7bda18e8b851b5. It is project-branding artwork, not a live screenshot or scientific observation. The creation method is not established by this provenance record.
 
 ## Refreshing screenshots
 

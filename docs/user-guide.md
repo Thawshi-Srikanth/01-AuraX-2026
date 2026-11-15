@@ -4,6 +4,8 @@
 
 These screenshots were captured from the public application on **15 November 2026**. They show real UI states, including a successfully prepared two-observation comparison. Current archive availability, coverage, and browser layout can differ. [Capture manifest](images/README.md).
 
+For separate workspace instructions, see [Sky map](sky-map-guide.md) and [Images](images-guide.md).
+
 ## 1. Choose a sky position
 
 Open [Home](https://aurax.thawshi.com). Enter right ascension in degrees from 0 inclusive to 360 exclusive, and declination from −90 to +90. Choose a challenge target to open its Images workspace immediately. For manual coordinates, select **Open images** beside the inputs (directly beneath them on phones). Object-name lookup fills coordinates for review before opening images.

@@ -14,6 +14,8 @@ SPHEREx is a joint JPL/Caltech project funded by NASA. Follow the current [IRSA 
 
 ## Images and figures
 
+- [README cover](images/aura-cover.png): project-branding artwork supplied by the maintainer on 15 November 2026, copied unchanged. It is an illustration, not a measured SPHEREx observation. This record does not infer its creation method or third-party rights.
+
 - [Home image credits and original sources](../frontend/public/assets/home/CREDITS.md): NASA/JPL-Caltech SPHEREx all-sky cover, previous Vela cover, and spacecraft concept.
 - [NOIRLab 88 Constellations](https://noirlab.edu/public/education/constellations/): photographic sky-navigation background, attributed in source comments to Eckhard Slawik's all-sky material. The exact downloaded derivative and full image credit should be checked against the original asset record before republication.
 - [Documentation screenshot manifest](images/README.md): direct captures, source URLs, dates, and visible states.
