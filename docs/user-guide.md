@@ -6,7 +6,7 @@ These screenshots were captured from the public application on **15 November 202
 
 ## 1. Choose a sky position
 
-Open [Home](https://aurax.thawshi.com). Enter right ascension in degrees from 0 inclusive to 360 exclusive, and declination from −90 to +90. You can choose a challenge target or use the object-name lookup to fill coordinates before loading images.
+Open [Home](https://aurax.thawshi.com). Enter right ascension in degrees from 0 inclusive to 360 exclusive, and declination from −90 to +90. Choose a challenge target to open its Images workspace immediately. For manual coordinates, select **Open images** beside the inputs (directly beneath them on phones). Object-name lookup fills coordinates for review before opening images.
 
 ![Home with RA/Dec inputs and five challenge-target choices](images/live-home.jpg)
 
@@ -58,7 +58,7 @@ A possible shift near the marker is consistent with known catalog motion in the 
 
 ## 6. Browse your own observations
 
-For a new field, use Home's **Load image sequence** or **Images**. Filter the retrieved observations by date, detector subset, release, or search text where offered. Begin with the default small field and enlarge it only when more context is needed.
+For a new field, use Home's **Open images** action or **Images**. Filter the retrieved observations by date, detector subset, release, or search text where offered. Begin with the default small field and enlarge it only when more context is needed.
 
 In **Compare images**, select two to four distinct observations and press **Analyse images**. General comparison can mix wavelengths and is useful for exploring spectral appearance. For stricter time comparison, use matching-wavelength mode and inspect its checks. Four general-comparison frames do not automatically form a verified time sequence.
 

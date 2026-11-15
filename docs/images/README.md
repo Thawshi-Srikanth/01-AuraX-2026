@@ -20,6 +20,10 @@ The two calibrated products have actual FITS timestamps 2025-05-01T14:00:01.056Z
 
 The existing PNG/GIF files in [validation](../validation) are recorded scientific-validation figures, not screenshots from this capture session. Original observational data: NASA/IPAC IRSA SPHEREx. Cover credit: NASA/JPL-Caltech. App UI: AURAx. See [credits](../credits.md) and [AI disclosure](../ai-disclosure.md).
 
+## Interface changes after capture
+
+These live captures precede the Home shortcut update: example-object buttons now open Images immediately, and the coordinate action is labelled **Open images** and sits beside the inputs on desktop. The walkthrough describes that updated behavior. Comparison and quality captures remain representative of the checked workflow.
+
 ## Refreshing screenshots
 
 Use the real public or clearly labelled local application. Capture meaningful completed states, retain visible errors if documenting a failure, and update this manifest with the actual source/date. Never edit pixels to imply a detection or successful request. Keep files small and exclude credentials, private targets, and browser account details.
