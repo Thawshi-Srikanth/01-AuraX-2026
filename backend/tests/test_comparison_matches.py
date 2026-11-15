@@ -489,7 +489,7 @@ def test_real_pyvo_transport_failures_do_not_create_empty_or_poisoned_searches(
         assert response.json() == {
             "detail": "IRSA metadata is unavailable. Try again later."
         }
-        assert transport.call_count == 1
+        assert transport.call_count == 2  # TAP, then the independent SIA endpoint.
         save.assert_not_called()
         fetch.assert_not_called()
 

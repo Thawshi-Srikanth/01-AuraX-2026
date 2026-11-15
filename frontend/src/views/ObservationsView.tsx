@@ -3,6 +3,8 @@ import { ArrowLeft, ArrowRight, Bookmark, Download, Loader2, PanelRightClose, Pa
 import { NavigationTab, DETECTOR_COLORS } from '../tokens/colors';
 import { ResolvedTarget, fetchObservations, ObservationsResponse, SPHERExObservation, fetchCutout, projectCatalogPosition } from '../services/api';
 import { FitsCanvas } from '../components/FitsCanvas';
+import { DetectorDropdown } from '../components/DetectorDropdown';
+import { detectorMatches } from '../utils/detectors';
 import { RegionInspector } from '../components/RegionInspector';
 import { ObservationTimeline } from '../components/ObservationTimeline';
 import type { DateTimeRange } from '../components/DateTimeRangeFilter';
@@ -35,7 +37,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
   const [dates, setDates] = useRetainedState('images', targetKey, 'dates', { key: targetKey, range: DEFAULT_RANGE });
   const [selection, setSelection] = useRetainedState('images', targetKey, 'selection', { key: targetKey, id: reference.id });
   const [stretch, setStretch] = useRetainedState('images', targetKey, 'stretch', 'zscale');
-  const [size, setSize] = useRetainedState('images', targetKey, 'size', 200);
+  const [size, setSize] = useRetainedState('images', targetKey, 'size', 50);
   const [frameState, setFrameState] = useState<FrameState | null>(null);
   const [retry, setRetry] = useState(0);
   const [inspection, setInspection] = useState<{ key: string; position: ImageSelection } | null>(null);
@@ -79,8 +81,13 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
     const to = (range.toDate || data?.distinct_dates[data.distinct_dates.length - 1] || '2099-12-31') + ' ' + range.toTime + ':59.999';
     return observations.filter(observation => Date.parse(observation.utc_date) >= Date.parse(from.replace(' ', 'T') + 'Z') && Date.parse(observation.utc_date) <= Date.parse(to.replace(' ', 'T') + 'Z'));
   }, [observations, range, data]);
-  const active = useMemo(() => selectedDetector === 'All' ? timeFiltered
-    : timeFiltered.filter(observation => observation.detector === selectedDetector), [timeFiltered, selectedDetector]);
+  const active = useMemo(() => timeFiltered.filter(observation => detectorMatches(observation.detector, selectedDetector)), [timeFiltered, selectedDetector]);
+  function changeDetectors(value: string) {
+    const retained = observations.find(observation => matchesObservation(observation, selection.id));
+    setPlaybackContext(null);
+    if (retained && !detectorMatches(retained.detector, value)) setSelection({ key: targetKey, id: '' });
+    setSelectedDetector(value);
+  }
   const matchingSelection = selection.key === targetKey ? active.find(observation => matchesObservation(observation, selection.id)) : undefined;
   const selectionUnavailable = (data?.status === 'success' || data?.status === 'partial') && selection.key === targetKey && !!selection.id && !matchingSelection;
   const selected = selectionUnavailable ? null : matchingSelection || active[0] || null;
@@ -152,7 +159,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
   const emptyMessage = loadingCatalog ? 'Checking archive coverage for this sky position.'
     : data?.status === 'error' ? data.message || 'Try the archive request again.'
     : selectionUnavailable ? 'The retained observation is not in these archive results or filters. Choose an observation from the list or widen the filters.' : isFilteredEmpty ? 'Widen the date range or choose another detector.'
-    : 'The archive returned no observations for this position. No reference image has been substituted.';
+    : data?.message || 'The archive returned no observations for this position. No reference image has been substituted.';
 
   return (
     <section className="images-root" aria-label="Images">
@@ -164,11 +171,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
         <aside className="images-selection" aria-label="Filters and observations">
           <section className="images-filters" aria-labelledby="image-filters-heading">
             <div className="images-filter-heading"><h2 id="image-filters-heading">Filters</h2><button type="button" className="images-reset-filters" onClick={resetFilters}>Reset</button></div>
-            <label htmlFor="image-detector">Detector</label>
-            <select id="image-detector" value={selectedDetector} onChange={event => setSelectedDetector(event.target.value)}>
-              <option value="All">All detectors</option>
-              {['D1','D2','D3','D4','D5','D6'].map(detector => <option key={detector} value={detector}>{detector}</option>)}
-            </select>
+            <DetectorDropdown value={selectedDetector} onChange={changeDetectors} />
             <div className="images-date-inputs">{(['from', 'to'] as const).map(bound => {
               const date = range[bound === 'from' ? 'fromDate' : 'toDate'] || (bound === 'from' ? data?.distinct_dates[0] : data?.distinct_dates[data.distinct_dates.length - 1]);
               return <label key={bound}>
@@ -219,6 +222,7 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
           <div id="image-panel" role="tabpanel" aria-labelledby={'image-tab-' + PANELS.indexOf(panel)} className="images-panel-content">
             {panel === 'Details' && <>
               <h2>Sky position</h2>
+              {target.benchmark && <p className="images-panel-note">Fixed reference field at J{target.benchmark.field_epoch}, estimated from catalog proper motion. No parallax/perspective correction; source identity must be checked in the images. <a href={target.benchmark.source_url} target="_blank" rel="noreferrer">Catalog reference ↗</a></p>}
               <dl><dt>Right ascension</dt><dd>{target.coordinates.ra_deg.toFixed(6)}°</dd><dt>Declination</dt><dd>{target.coordinates.dec_deg.toFixed(6)}°</dd><dt>Frame</dt><dd>{target.coordinates.frame}</dd></dl>
               {frame ? <><h2>Displayed image</h2><dl><dt>Detector</dt><dd><span className="images-current-detector"><i style={{ backgroundColor: DETECTOR_COLORS[frame.observation.detector] }} aria-hidden="true" />{frame.observation.detector}</span></dd><dt>Detector wavelength range</dt><dd>{frame.observation.wavelength_min_um}–{frame.observation.wavelength_max_um} µm</dd><dt>Wavelength at target</dt><dd>{frame.cutout.wavelength_um?.toFixed(4) ?? 'Unavailable'} µm (WCS-WAVE)</dd><dt>Exposure</dt><dd>{frame.observation.exptime_sec != null ? frame.observation.exptime_sec + ' s' : 'Not provided'}</dd><dt>Image dimensions</dt><dd>{frame.cutout.width} × {frame.cutout.height} px</dd><dt>Brightness unit</dt><dd>{frame.cutout.bunit}</dd></dl></> : <p className="images-panel-note">Image details appear only after the selected image loads.</p>}
               <div className="images-detail-actions">
@@ -228,8 +232,9 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
             </>}
             {panel === 'Provenance' && <>
               <h2>Archive</h2><p>{data?.provenance || 'No archive result loaded.'}</p>
+              {data?.message && <p className="images-panel-note">{data.message}</p>}
               <p className="images-panel-note">Archive results and images may be cached. The retrieved list is not a guarantee of all available observations.</p>
-              {data?.truncated && <p className="images-panel-note">The query returns up to 100 exposures, ordered oldest first. Later observations may not be included.</p>}
+              {data?.truncated && <p className="images-panel-note">The query returns up to 100 exposures. Additional observations may not be included.</p>}
               {frame ? <><h2>Displayed observation</h2><p className="images-observation-id">{frame.observation.obs_id}</p><p>{frame.cutout.source}</p>{frame.observation.access_url.startsWith('https://') && <a href={frame.observation.access_url} target="_blank" rel="noreferrer">Open archive image link ↗</a>}</> : <p className="images-panel-note">No image provenance is shown until an observation loads.</p>}
             </>}
             <div hidden={panel !== 'Region'}>
@@ -252,10 +257,9 @@ export function ObservationsView({ target, onNavigate, initialDetector, onDetect
             <button type="button" aria-label={isPlaying ? 'Pause observations' : 'Play observations'} aria-pressed={isPlaying} disabled={!isPlaying && (!frame || active.length < 2)} title={active.length < 2 ? 'At least two available observations are needed.' : playbackReason} aria-describedby="images-playback-status" onClick={() => setPlaybackContext(isPlaying ? null : playbackKey)}>{isPlaying ? <Pause size={17} aria-hidden="true" /> : <Play size={17} aria-hidden="true" />}<span>{isPlaying ? 'Pause' : 'Play'}</span></button>
             <button type="button" aria-label="Next observation" disabled={!frame || active.length < 2} onClick={() => step(1)}><span>Next</span><ArrowRight size={17} aria-hidden="true" /></button>
           </div>
-          <span className="images-frame-count">{frame ? 'Frame ' + (displayedIndex + 1) + ' of ' + active.length : loadingImage ? isPlaying ? 'Buffering next observation…' : 'Loading image…' : 'No image displayed'}</span>
         </div>
         <ObservationTimeline observations={active} selected={selected} displayed={frame?.observation || null} onSelect={selectObservation} />
-        <p id="images-playback-status">Individual observations. Wavelengths and alignment may differ; changes alone do not establish variability.</p>
+        <p id="images-playback-status" className="sr-only">{playbackReason}</p>
       </footer>
     </section>
   );

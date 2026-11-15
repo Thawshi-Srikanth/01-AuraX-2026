@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { SequenceRequest, SequenceResponse, SPHERExObservation } from '../src/services/api';
-import { createSequenceLoader, defaultSequence, displayedSequence, sequenceKey, validateSequence } from '../src/utils/comparisonSequence';
+import { createSequenceLoader, defaultGeneralSequence, defaultSequence, displayedSequence, sequenceKey, validateSequence } from '../src/utils/comparisonSequence';
 import type { SequenceState } from '../src/utils/comparisonSequence';
 
 const request: SequenceRequest = {
@@ -18,6 +18,56 @@ function deferred<T>() {
 }
 
 describe('four-frame comparison', () => {
+  test('invalid requested-position and image-quality diagnostics are rejected', () => {
+    const data = response();
+    data.target_pixel = { x: 1.2, y: 2.3 };
+    data.frame_quality = data.frames.map((_, i) => ({ epoch_index: i, usable_pixel_count: 16, usable_fraction: 1, requested_position_usable: true, native_target_flags: 0 }));
+    expect(validateSequence(request, data)).toBe(data);
+    data.target_pixel.x = 4;
+    expect(() => validateSequence(request, data)).toThrow('sky position');
+    data.target_pixel.x = 1.2;
+    data.frame_quality[2].usable_pixel_count = 3;
+    expect(() => validateSequence(request, data)).toThrow('quality checks');
+  });
+  test('general images survive millisecond ordering differences in real FITS times', () => {
+    const time = '2025-08-15T20:45:11.376Z';
+    const req: SequenceRequest = { ...request, comparison_kind: 'general', epochs: request.epochs.slice(0, 2).map((epoch, i) => ({ ...epoch, utc_date: time, detector: i ? 'D6' : 'D3' })) };
+    const data = response(req);
+    data.comparison_kind = 'general'; data.blink_ready = false; data.wavelength_match = false;
+    data.display_mask = [...data.coverage_mask];
+    data.frames[0].epoch.utc_date = '2025-08-15T20:45:11.338Z';
+    data.frames[1].epoch.utc_date = '2025-08-15T20:45:11.337Z';
+    expect(validateSequence(req, data).frames).toHaveLength(2);
+    expect(() => validateSequence({ ...req, comparison_kind: 'matched' }, data)).toThrow('chronological');
+    data.frames[0].epoch.utc_date = '2025-08-15T20:45:09.000Z';
+    expect(() => validateSequence(req, data)).toThrow('selected observation');
+  });
+  test('small angular cutouts may include an extra FITS edge pixel', () => {
+    const req: SequenceRequest = { ...request, comparison_kind: 'general', size_px: 16 };
+    const data = response(req);
+    data.comparison_kind = 'general'; data.width = data.height = 17;
+    data.valid_mask = data.coverage_mask = data.display_mask = Array(17 * 17).fill(true);
+    data.frames.forEach(frame => { frame.pixels = Array(17 * 17).fill(.3); });
+    expect(validateSequence(req, data).width).toBe(17);
+    data.width = 257;
+    expect(() => validateSequence(req, data)).toThrow('dimensions');
+  });
+  test('general comparison accepts simultaneous mixed-wavelength images without blink', () => {
+    const req: SequenceRequest = { ...request, comparison_kind: 'general', epochs: request.epochs.map((epoch, i) => ({ ...epoch, utc_date: request.epochs[0].utc_date, detector: i % 2 ? 'D3' : 'D2' })) };
+    const data = response(req);
+    data.comparison_kind = 'general'; data.blink_ready = false; data.wavelength_match = false; data.baseline_days = 0;
+    data.valid_mask.fill(false); data.display_mask = [...data.coverage_mask];
+    data.frames.forEach((frame, i) => { frame.wavelength_um = 1.2 + i; });
+    expect(validateSequence(req, data).frames).toHaveLength(4);
+    data.blink_ready = true;
+    expect(() => validateSequence(req, data)).toThrow();
+  });
+  test('general defaults distinguish detectors and avoid reprocessed duplicates', () => {
+    const base = { ...request.epochs[0], wavelength_center_um: null } as SPHERExObservation;
+    const reprocessed = { ...base, access_url: 'another-version' };
+    const other = { ...base, detector: 'D3' };
+    expect(defaultGeneralSequence([base, reprocessed, other])).toEqual([base, other]);
+  });
   test('requires every selected real frame, in chronological order', () => {
     expect(validateSequence(request, response()).frames).toHaveLength(4);
     for (const change of [

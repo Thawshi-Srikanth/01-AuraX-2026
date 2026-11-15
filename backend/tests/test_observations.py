@@ -240,6 +240,9 @@ def test_archive_timeout_is_unavailable(monkeypatch):
     monkeypatch.setattr(
         service.pyvo.dal, "TAPService", Mock(side_effect=requests.Timeout)
     )
+    monkeypatch.setattr(
+        service.pyvo.dal, "SIA2Service", Mock(side_effect=requests.Timeout)
+    )
     with pytest.raises(service.ArchiveUnavailable):
         service.query_archive(10.0, 0.0, 1)
 

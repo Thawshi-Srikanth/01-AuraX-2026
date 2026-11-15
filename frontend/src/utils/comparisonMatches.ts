@@ -1,6 +1,6 @@
 import type { MatchGroup, MatchRequest, MatchResponse } from '../services/api';
 
-export const matchKey = (request: MatchRequest) => JSON.stringify([request.ra_deg, request.dec_deg, request.from_date || '', request.to_date || '', request.size_px]);
+export const matchKey = (request: MatchRequest) => JSON.stringify([request.ra_deg, request.dec_deg, request.from_date || '', request.to_date || '', request.size_px, request.min_baseline_days ?? 0, request.time_sampling || 'archive']);
 export interface MatchState { key: string; searching: boolean; data?: MatchResponse; error?: string }
 
 export function validateMatches(response: MatchResponse) {
@@ -45,7 +45,7 @@ export function createMatchLoader(fetchMatches: (request: MatchRequest, signal: 
           data = validateMatches(await fetchMatches({ ...request, advance: request.advance || batch > 0, retry_failed: !!request.retry_failed && batch === 0 }, controller.signal));
           if (ticket !== generation) return;
           const progress = JSON.stringify([data.checked, data.candidates, data.failed]);
-          const done = !data.auto_continue || data.complete || data.limited || data.status === 'partial' || data.groups[0]?.recommended_ids.length === 4 || batch === 2 || progress === previous;
+          const done = !data.auto_continue || data.complete || data.failed > 0 || data.groups[0]?.recommended_ids.length === 4 || batch === 2 || progress === previous;
           publish({ key, data, searching: !done });
           if (done) return;
           previous = progress;

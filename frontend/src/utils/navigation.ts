@@ -1,5 +1,8 @@
 import type { NavigationTab } from '../tokens/colors';
 import type { ResolvedTarget } from '../services/api';
+import { validDetectorSelection } from './detectors';
+import { CHALLENGE_TARGETS, challengeTarget } from '../data/challengeTargets';
+import { CHECKED_COMPARISON, checkedComparisonAt } from '../data/checkedComparison';
 
 export const ROUTES: Record<NavigationTab, string> = { Home: '/', Explore: '/sky', Docs: '/docs', Observations: '/images', Compare: '/compare', Wavelengths: '/wavelengths', Collections: '/saved' };
 export type Preferences = Record<string, Record<string, Record<string, unknown>>>;
@@ -8,25 +11,10 @@ export const SESSION_KEY = 'aurax.analysis.v1';
 export const targetIdentity = (target: ResolvedTarget) => JSON.stringify([target.coordinates.ra_deg, target.coordinates.dec_deg]);
 export const isAnalysis = (tab: NavigationTab) => ['Observations', 'Compare', 'Wavelengths'].includes(tab);
 const viewName = (tab: NavigationTab) => ({ Observations: 'images', Compare: 'compare', Wavelengths: 'wavelengths' }[tab as 'Observations' | 'Compare' | 'Wavelengths']);
-const detectorValid = (value: unknown) => typeof value === 'string' && /^(All|D[1-6])$/.test(value);
+const detectorValid = validDetectorSelection;
 const decimal = (value: string | null) => value != null && value.trim() !== '' && /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i.test(value) && Number.isFinite(Number(value));
 
-export const DEFAULT_TARGET: ResolvedTarget = {
-  query: "Barnard's Star",
-  canonical_name: "NAME Barnard's star",
-  object_type: "Sky position",
-  coordinates: {
-    ra_deg: 269.45208,
-    dec_deg: 4.69339,
-    ra_hms: "17h 57m 48.50s",
-    dec_dms: "+04° 41' 36.2\"",
-    frame: "ICRS",
-    epoch: "Not specified",
-  },
-  proper_motion: null,
-  aliases: [],
-  provenance: "Example starting coordinates; not catalog verified",
-};
+export const DEFAULT_TARGET: ResolvedTarget = challengeTarget(CHALLENGE_TARGETS[0]);
 
 // Sexagesimal formatting helper for custom coordinates
 function formatCoords(raDeg: number, decDeg: number): { raStr: string; decStr: string } {
@@ -76,7 +64,13 @@ export function validSession(value: unknown): value is AnalysisSession {
     && Object.keys(candidate.preferences).length <= 8;
 }
 export function readSession(storage?: Pick<Storage, 'getItem'>): AnalysisSession {
-  try { const raw = storage?.getItem(SESSION_KEY); if (raw && raw.length < 250000) { const value: unknown = JSON.parse(raw); if (validSession(value)) return value; } } catch { /* Private browsing or malformed storage: keep navigation usable. */ }
+    try { const raw = storage?.getItem(SESSION_KEY); if (raw && raw.length < 250000) { const value: unknown = JSON.parse(raw); if (validSession(value)) {
+      if (['Example starting coordinates; not catalog verified', 'Challenge example starting position'].includes(value.target.provenance)) {
+        const benchmark = CHALLENGE_TARGETS.find(item => item.name === value.target.query);
+        if (benchmark) return { ...value, target: challengeTarget(benchmark) };
+      }
+      return value;
+    } } } catch { /* Private browsing or malformed storage: keep navigation usable. */ }
   return emptySession();
 }
 export function preference<T>(session: AnalysisSession, targetKey: string, view: string, field: string, fallback: T): T {
@@ -128,8 +122,11 @@ export function routeUrl(tab: NavigationTab, session: AnalysisSession): string {
     const filters = values.filters as Record<string, unknown> | undefined;
     if (filters) { put('detector', filters.detector); put('from', filters.from); put('to', filters.to); }
     const frames = values.selection as { a?: string; b?: string; c?: string; d?: string } | undefined;
-    for (const slot of ['a', 'b', 'c', 'd'] as const) put(slot, observationName(frames?.[slot]));
+    for (const slot of ['a', 'b', 'c', 'd'] as const) { put(slot, observationName(frames?.[slot])); put(slot + '_detector', observationDetector(frames?.[slot])); }
     put('mode', values.mode);
+    put('comparison', values.comparisonKind);
+    put('example', values.checkedExample);
+    put('gap', values.minimumGap);
     put('group', values.group);
     if (typeof values.manualDates === 'boolean') put('manual', values.manualDates ? 1 : 0);
   }
@@ -157,14 +154,14 @@ export function readRoute(location: { pathname: string; search: string }, previo
     const key = targetIdentity(session.target), view = viewName(tab);
     const set = (field: string, value: unknown) => { session = setPreference(session, key, view, field, value); };
     const detector = params.get('detector');
-    if (detectorValid(detector) && !(tab === 'Wavelengths' && detector === 'All')) set('detector', detector);
+    if (detectorValid(detector) && !(tab === 'Wavelengths' && !/^D[1-6]$/.test(detector || ''))) set('detector', detector);
     const size = Number(params.get('size'));
-    if ([50, 100, 200, 290, 400, 800, 2040].includes(size) && !(tab === 'Compare' && size === 2040)) set('size', size);
+    if ([16, 50, 100, 200, 290, 400, 800, 2040].includes(size) && !(tab === 'Compare' && size === 2040)) set('size', size);
     const stretch = params.get('stretch'); if (stretch && ['zscale', 'linear', 'log', 'sqrt', 'asinh'].includes(stretch)) set('stretch', stretch);
     const date = (value: string | null) => value && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value ? value : null;
     const from = date(params.get('from')), to = date(params.get('to'));
     const obs = params.get('obs')?.slice(0, 200);
-    const obsDetector = /^D[1-6]$/.test(params.get('obs_detector') || '') ? params.get('obs_detector')! : detector && detector !== 'All' && detectorValid(detector) ? detector : '';
+    const obsDetector = /^D[1-6]$/.test(params.get('obs_detector') || '') ? params.get('obs_detector')! : detector && /^D[1-6]$/.test(detector) ? detector : '';
     if (tab === 'Observations') {
       if (obs) set('selection', { key, id: obsDetector ? JSON.stringify([obs, obsDetector]) : obs });
       if (params.has('from') || params.has('to') || params.has('from_time') || params.has('to_time')) set('dates', { key, range: { fromDate: from, toDate: to, fromTime: /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(params.get('from_time') || '') ? params.get('from_time') : '00:00', toTime: /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(params.get('to_time') || '') ? params.get('to_time') : '23:59' } });
@@ -176,11 +173,29 @@ export function readRoute(location: { pathname: string; search: string }, previo
       const chosenDate = date(params.get('date')); if (chosenDate || params.get('date') === 'ALL') set('date', chosenDate || 'ALL');
     }
     if (tab === 'Compare') {
+      const gap = params.get('gap');
+      if (gap !== null && decimal(gap) && Number(gap) >= 0 && Number(gap) <= 7300) set('minimumGap', Number(gap));
       if (params.has('detector') || params.has('from') || params.has('to')) set('filters', { key, detector: detectorValid(detector) && detector !== 'All' ? detector : '', from: from || '', to: to || '' });
-      if (['a', 'b', 'c', 'd'].some(slot => params.has(slot))) set('selection', { key, a: params.get('a')?.slice(0, 200) || '', b: params.get('b')?.slice(0, 200) || '', c: params.get('c')?.slice(0, 200) || '', d: params.get('d')?.slice(0, 200) || '' });
+      const frameId = (slot: string) => {
+        const id = params.get(slot)?.slice(0, 200) || '';
+        const frameDetector = params.get(slot + '_detector');
+        return id && /^D[1-6]$/.test(frameDetector || '') ? JSON.stringify([id, frameDetector]) : id;
+      };
+      if (['a', 'b', 'c', 'd'].some(slot => params.has(slot))) set('selection', { key, a: frameId('a'), b: frameId('b'), c: frameId('c'), d: frameId('d') });
+      if (['general', 'matched'].includes(params.get('comparison') || '')) set('comparisonKind', params.get('comparison'));
+      else if (params.has('group')) set('comparisonKind', 'matched');
       if (['blink', 'grid', 'side-by-side'].includes(params.get('mode') || '')) set('mode', params.get('mode'));
       if (/^D[1-6]-[a-f0-9]{16}$/.test(params.get('group') || '')) set('group', params.get('group'));
       if (['0', '1'].includes(params.get('manual') || '')) set('manualDates', params.get('manual') === '1');
+      const checked = params.get('example') === CHECKED_COMPARISON.id && checkedComparisonAt(session.target.coordinates.ra_deg, session.target.coordinates.dec_deg);
+      set('checkedExample', checked ? CHECKED_COMPARISON.id : '');
+      if (checked) {
+        set('comparisonKind', 'matched'); set('manualDates', false);
+        if (![16, 50, 100, 200].includes(size)) set('size', 50);
+        set('selection', { key, a: '', b: '' });
+        set('filters', { key, detector: '', from: '', to: '' });
+        set('listFilters', { query: '', release: '', sort: 'oldest' });
+      }
     }
   }
   return { tab, session, resolveName };

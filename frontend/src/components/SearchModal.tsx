@@ -4,6 +4,7 @@ import { NavigationTab } from '../tokens/colors';
 import { resolveTarget, resolveCoordinates, ResolvedTarget } from '../services/api';
 import { SKY_LANDMARKS, BRIGHT_NAV_STARS } from '../data/skyCoverage';
 import messierDataRaw from '../data/celestial/messier.json';
+import { CHALLENGE_TARGETS, challengeTarget, referenceField } from '../data/challengeTargets';
 
 interface SearchModalProps {
   isOpen: boolean;
@@ -23,8 +24,9 @@ interface SearchCandidate {
   dec?: number;
 }
 
-// Canonical SPHEREx & SIMBAD Verified Benchmark Targets
+// Shared epoch-labelled challenge fields plus navigation landmarks.
 const BENCHMARK_TARGETS: SearchCandidate[] = [
+  ...CHALLENGE_TARGETS.map(target => ({ id: target.id, name: target.name, subtitle: 'Fixed J2025.5 field · approximate proper motion', type: target.type, category: 'benchmark' as const, ...referenceField(target) })),
   {
     id: 'andromeda',
     name: 'Andromeda Galaxy',
@@ -34,33 +36,9 @@ const BENCHMARK_TARGETS: SearchCandidate[] = [
     ra: 10.685,
     dec: 41.269,
   },
-  {
-    id: 'barnard',
-    name: "Barnard's Star",
-    subtitle: 'Astrometric Benchmark • High proper motion (10.3"/yr)',
-    type: 'Red Dwarf',
-    category: 'benchmark',
-    ra: 269.452,
-    dec: 4.693,
-  },
-  {
-    id: 'epsilon_indi',
-    name: 'Epsilon Indi B',
-    subtitle: 'Sub-stellar brown dwarf binary pair',
-    type: 'Brown Dwarf Pair',
-    category: 'benchmark',
-    ra: 330.84,
-    dec: -56.79,
-  },
-  {
-    id: 'wise0855',
-    name: 'WISE 0855',
-    subtitle: 'Coldest known sub-zero sub-stellar dwarf',
-    type: 'Sub-zero Brown Dwarf',
-    category: 'benchmark',
-    ra: 133.795,
-    dec: -7.245,
-  },
+
+
+
   {
     id: 'm101',
     name: 'Pinwheel Galaxy (M101)',
@@ -70,15 +48,7 @@ const BENCHMARK_TARGETS: SearchCandidate[] = [
     ra: 210.802,
     dec: 54.349,
   },
-  {
-    id: 'rw_aur',
-    name: 'RW Aurigae',
-    subtitle: 'Young stellar object with variable circumstellar disk',
-    type: 'T Tauri Star',
-    category: 'benchmark',
-    ra: 77.108,
-    dec: 30.402,
-  },
+
   {
     id: 'm42',
     name: 'Orion Nebula (M42)',
@@ -286,6 +256,11 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
     const destTab = currentTab && currentTab !== 'Explore' ? currentTab : 'Observations';
     try {
+      const benchmark = CHALLENGE_TARGETS.find(target => target.id === candidate.id);
+      if (benchmark) {
+        onTargetResolved(challengeTarget(benchmark));
+        onNavigate(destTab); onClose(); return;
+      }
       if (candidate.category === 'coords' && candidate.ra !== undefined && candidate.dec !== undefined) {
         const resolved = await resolveCoordinates(candidate.ra, candidate.dec);
         onTargetResolved(resolved);

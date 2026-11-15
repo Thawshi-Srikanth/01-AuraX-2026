@@ -94,7 +94,7 @@ def _pairs(checks, request):
             Time(eb.utc_date, format="isot", scale="utc"),
         )
         baseline = float((tb - ta).to_value(u.day))
-        if baseline == 0:
+        if baseline == 0 or abs(baseline) < request.min_baseline_days:
             continue
         if baseline < 0:
             a, b, ea, eb = b, a, eb, ea
@@ -288,6 +288,10 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore, control=N
     persisted = _persist(state, key, cache)
     if state.batch.observations and not persisted:
         message += " Progress could not be saved; a later request may repeat checks."
+    if state.batch.fallback_notice:
+        message += " " + state.batch.fallback_notice
+    if request.min_baseline_days:
+        message += f" Pairs require at least {request.min_baseline_days:g} days apart."
     return MatchResponse(
         ra=request.ra,
         dec=request.dec,
@@ -301,6 +305,10 @@ def _run(request: MatchRequest, cache: CacheManager, store: FitsStore, control=N
         metadata_rejected_count=state.batch.rejected_count,
         duplicate_exposure_count=state.batch.duplicate_exposure_count,
         metadata_retrieved_at=state.batch.retrieved_at,
+        metadata_provenance=state.batch.provenance,
+        metadata_source_url=state.batch.source_url,
+        min_baseline_days=request.min_baseline_days,
+        candidate_scope=state.batch.candidate_scope,
         checked_count=verified + excluded,
         verified_count=verified,
         excluded_count=excluded,

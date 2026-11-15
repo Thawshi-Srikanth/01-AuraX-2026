@@ -16,6 +16,7 @@ class SequenceRequest(BaseModel):
     dec: float = Field(ge=-90, le=90)
     size_deg: float = Field(default=0.03, gt=0, le=0.25)
     stretch: Literal["zscale", "linear", "log"] = "zscale"
+    comparison_kind: Literal["general", "matched"] = "matched"
 
 
 class SequencePairCheck(BaseModel):
@@ -30,6 +31,20 @@ class SequenceFrame(BaseModel):
     pixels: list[float | None]
 
 
+class SequenceFrameQuality(BaseModel):
+    epoch_index: int
+    usable_pixel_count: int = Field(ge=0)
+    usable_fraction: float = Field(ge=0, le=1)
+    requested_position_usable: bool
+    native_target_flags: int = Field(ge=0)
+    native_target_flag_names: list[str] = Field(default_factory=list)
+
+
+class SequenceTargetPixel(BaseModel):
+    x: float
+    y: float
+
+
 class SequenceResponse(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     status: Literal[
@@ -40,8 +55,13 @@ class SequenceResponse(BaseModel):
         "insufficient_coverage",
     ]
     message: str
+    comparison_kind: Literal["general", "matched"] = "matched"
+    display_mask: list[bool] = Field(default_factory=list)
     epochs: list[ComparisonEpoch]
     frames: list[SequenceFrame]
+    frame_quality: list[SequenceFrameQuality] = Field(default_factory=list)
+    target_pixel: SequenceTargetPixel | None = None
+    requested_position_usable: bool = False
     reference_epoch_index: int = 0
     frame_order: str = (
         "Request order; first selected observation defines the reference grid"
@@ -50,6 +70,7 @@ class SequenceResponse(BaseModel):
     height: int
     registered: bool = True
     blink_ready: bool
+    visual_playback_ready: bool = False
     target_wavelength_match: bool
     baseline_days: float
     coverage_pixel_count: int

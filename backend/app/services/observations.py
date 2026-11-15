@@ -9,13 +9,22 @@ from urllib.parse import urlsplit
 import astropy.units as u
 import pyvo
 import requests
+from astropy.table import Table
 from astropy.time import Time
 from pydantic import ValidationError
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from app.db.cache import CacheManager
 from app.schemas.observation import ObservationsResponse, SPHERExObservation
 
 IRSA_TAP_URL = "https://irsa.ipac.caltech.edu/TAP"
+IRSA_SIA_URL = "https://irsa.ipac.caltech.edu/SIA"
+SIA_NOTICE = (
+    "TAP was unavailable; results are from IRSA SIA. "
+    "Newly ingested data may lag by about a day. "
+    "Results are an archive-selected subset, sorted locally by observation time."
+)
 CACHE_NAMESPACE = "observations:v1"
 CACHE_TTL_SECONDS = 3600
 PRODUCT_NAME = re.compile(r"level2_(.+)D([1-6])_spx_(.+)\.fits")
@@ -33,6 +42,27 @@ class IrsaSession(requests.Session):
     def request(self, method, url, **kwargs):
         kwargs["timeout"] = (5, 30)
         return super().request(method, url, **kwargs)
+
+
+class SiaSession(IrsaSession):
+    """Allow one retry for transient errors seen on IRSA's SIA proxy."""
+
+    def __init__(self):
+        super().__init__()
+        self.mount(
+            IRSA_SIA_URL,
+            HTTPAdapter(
+                max_retries=Retry(
+                    total=1,
+                    connect=0,
+                    read=0,
+                    status=1,
+                    status_forcelist=(502, 503, 504),
+                    allowed_methods={"GET"},
+                    respect_retry_after_header=False,
+                )
+            ),
+        )
 
 
 def query_archive(ra: float, dec: float, limit: int):
@@ -53,8 +83,8 @@ def query_archive(ra: float, dec: float, limit: int):
             table = results.to_table()
             table.meta["overflow"] = results.query_status == "OVERFLOW"
             return table
-    except (pyvo.dal.DALAccessError, requests.RequestException, OSError) as error:
-        raise ArchiveUnavailable from error
+    except (pyvo.dal.DALAccessError, requests.RequestException, OSError):
+        return query_sia(ra, dec, limit)
 
 
 def _value(row, column):
@@ -77,6 +107,79 @@ def _number(row, column, optional=False):
     if not math.isfinite(number):
         raise ValueError("Nonfinite archive metadata")
     return number
+
+
+def query_sia(ra, dec, limit, *, detector=None, start=None, end=None):
+    """Query real Level 2 products without contacting TAP or capabilities endpoints."""
+    options = {}
+    if start is not None or end is not None:
+        # SIA accepts MJD intervals. PyVO's lowercase time converter expects
+        # Astropy Time objects, so pass the protocol value explicitly.
+        lower = "-Inf" if start is None else repr(start)
+        upper = "+Inf" if end is None else repr(end)
+        options["TIME"] = f"{lower} {upper}"
+    try:
+        with SiaSession() as session:
+            results = pyvo.dal.SIA2Service(
+                IRSA_SIA_URL, session=session, check_baseurl=False
+            ).search(
+                # IRSA supports zero-radius circles; PyVO's pos validator does not.
+                POS=f"CIRCLE {ra} {dec} 0",
+                collection=[
+                    "spherex_dr1",
+                    "spherex_qr3",
+                    "spherex_dr1_deep",
+                    "spherex_qr3_deep",
+                ],
+                data_type="image",
+                calib_level=2,
+                maxrec=limit + 1,
+                **options,
+            )
+            raw = results.to_table()
+            overflow = results.status[0] == "OVERFLOW"
+    except (pyvo.dal.DALAccessError, requests.RequestException, OSError) as error:
+        raise ArchiveUnavailable from error
+    mapping = {
+        "time_bounds_lower": "t_min",
+        "time_exposure": "t_exptime",
+        "energy_bandpassname": "energy_bandpassname",
+        "energy_bounds_lower": "em_min",
+        "energy_bounds_upper": "em_max",
+        "uri": "access_url",
+        "artifactid": "access_url",
+    }
+    if raw is None or not set(mapping.values()).issubset(raw.colnames):
+        raise InvalidArchiveResponse
+    rows = []
+    for row in raw[: limit + 1]:
+        if detector and _text(row, "energy_bandpassname") != "SPHEREx-" + detector:
+            continue
+        # SIA TIME matches overlapping exposures; the app filters start times.
+        try:
+            mjd = _number(row, "t_min")
+            if (start is not None and mjd < start) or (end is not None and mjd >= end):
+                continue
+        except (ValueError, TypeError):
+            pass  # Retain malformed rows for the existing rejection accounting.
+        rows.append(tuple(_value(row, column) for column in mapping.values()))
+    table = Table(rows=rows, names=list(mapping), dtype=[object] * len(mapping))
+
+    # Keep bad timestamps visible to the normal parser, after usable rows.
+    def order(row):
+        try:
+            return _number(row, "time_bounds_lower"), str(row["uri"])
+        except (ValueError, TypeError):
+            return float("inf"), str(row["uri"])
+
+    table = table[sorted(range(len(table)), key=lambda i: order(table[i]))]
+    table.meta.update(
+        overflow=overflow or len(raw) > limit,
+        source_url=IRSA_SIA_URL,
+        provenance="NASA/IPAC IRSA SIA: SPHEREx Level 2",
+        fallback_notice=SIA_NOTICE,
+    )
+    return table
 
 
 def parse_observation(row) -> SPHERExObservation:
@@ -193,7 +296,17 @@ def find_observations(ra: float, dec: float, limit: int, cache: CacheManager):
         detectors_available=sorted({obs.detector for obs in observations}),
         observations=observations,
         status=status,
-        message=message,
+        message=message
+        + (
+            " " + table.meta["fallback_notice"]
+            if table.meta.get("fallback_notice")
+            else ""
+        ),
+        **{
+            key: table.meta[key]
+            for key in ("source_url", "provenance")
+            if key in table.meta
+        },
         retrieved_at=datetime.now(UTC),
     )
     # Do not retain empty or partial results that could hide newly ingested data.
