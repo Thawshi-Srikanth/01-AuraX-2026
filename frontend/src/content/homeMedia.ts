@@ -1,6 +1,5 @@
-// Add the YouTube video's 11-character ID here when its link is supplied.
-// An empty value shows the honest coming-soon poster without loading YouTube.
+// Home walkthrough. An empty value shows the poster without loading YouTube.
 export const HOME_VIDEO: { youtubeId: string | null; title: string } = {
-  youtubeId: null,
+  youtubeId: '1ehcAh00yY8',
   title: 'Watch how AURAx works',
 };
