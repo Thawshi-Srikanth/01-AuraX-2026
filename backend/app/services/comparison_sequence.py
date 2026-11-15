@@ -12,9 +12,11 @@ from reproject import reproject_interp
 
 from app.schemas.sequence import (
     SequenceFrame,
+    SequenceFrameQuality,
     SequencePairCheck,
     SequenceRequest,
     SequenceResponse,
+    SequenceTargetPixel,
 )
 from app.services.compare import (
     MAX_INPUT_AXIS,
@@ -55,9 +57,13 @@ def all_pair_masks(aligned):
 
 def prepare_sequence(request: SequenceRequest, store: FitsStore) -> SequenceResponse:
     identities = validate_observations(
-        request.access_urls, request.ra, request.dec, request.size_deg
+        request.access_urls,
+        request.ra,
+        request.dec,
+        request.size_deg,
+        allow_mixed_detectors=request.comparison_kind == "general",
     )
-    epochs, aligned = [], []
+    epochs, aligned, native_target_flags, native_flag_names = [], [], [], []
     secondary_size = min(0.5, request.size_deg * math.sqrt(2) + 0.01)
     with ExitStack() as stack:
         reference = None
@@ -72,6 +78,18 @@ def prepare_sequence(request: SequenceRequest, store: FitsStore) -> SequenceResp
             epoch = read_epoch(data, retrieved, url, identity, request.ra, request.dec)
             epochs.append(epoch)
             image, wave, band, valid = calibrated_planes(data)
+            tx, ty = data.target_pixel(request.ra, request.dec)
+            native_target_flags.append(
+                int(data.flags[math.floor(ty + 0.5), math.floor(tx + 0.5)])
+                & ((1 << (data.flags.dtype.itemsize * 8)) - 1)
+            )
+            native_flag_names.append(
+                [
+                    str(data.hdus["FLAGS"].header.get(f"MSKN{bit:04d}", f"Bit {bit}"))
+                    for bit in range(64)
+                    if native_target_flags[-1] & (1 << bit)
+                ]
+            )
             if index == 0:
                 reference = data
                 aligned.append(
@@ -124,7 +142,39 @@ def prepare_sequence(request: SequenceRequest, store: FitsStore) -> SequenceResp
         x, y = reference.target_pixel(request.ra, request.dec)
         ix, iy = math.floor(x + 0.5), math.floor(y + 0.5)
         count, coverage_count = int(usable.sum()), int(common.sum())
-        if not distinct_times:
+        frame_quality = [
+            SequenceFrameQuality(
+                epoch_index=i,
+                usable_pixel_count=int(frame.coverage.sum()),
+                usable_fraction=float(frame.coverage.mean()),
+                requested_position_usable=bool(frame.coverage[iy, ix]),
+                native_target_flags=native_target_flags[i],
+                native_target_flag_names=native_flag_names[i],
+            )
+            for i, frame in enumerate(aligned)
+        ]
+        matched_ready = (
+            distinct_times
+            and target_match
+            and count >= MIN_MATCHED_PIXELS
+            and bool(usable[iy, ix])
+            and len({epoch.detector for epoch in epochs}) == 1
+        )
+        general = request.comparison_kind == "general"
+        if general and coverage_count >= MIN_MATCHED_PIXELS:
+            status, message = (
+                "ready",
+                "Images aligned for general visual comparison. "
+                "Wavelengths and observation times may differ; brightness "
+                "differences alone do not establish variability or motion.",
+            )
+        elif general:
+            status, message = (
+                "no_usable_overlap",
+                "Fewer than 16 quality-screened pixels "
+                "are common to the selected images. Try a different selection.",
+            )
+        elif not distinct_times:
             status, message = (
                 "duplicate_time",
                 "Each selected observation must have a different time.",
@@ -149,11 +199,29 @@ def prepare_sequence(request: SequenceRequest, store: FitsStore) -> SequenceResp
                 "ready",
                 "Ready for visual blink on one shared matched-pixel mask.",
             )
+        if general and coverage_count / common.size < 0.5:
+            message += (
+                f" Only {coverage_count / common.size:.1%} of this field is usable "
+                "in every image. Review image quality and replace low-coverage frames."
+            )
+            limited = [
+                f"image {check.epoch_index + 1} ({check.usable_fraction:.1%} usable)"
+                for check in frame_quality
+                if check.usable_fraction < 0.5
+            ]
+            if limited:
+                message += " Limited field coverage: " + ", ".join(limited) + "."
+        if general and not common[iy, ix]:
+            message += (
+                " The requested sky position is masked in at least one image; "
+                "this sequence cannot verify a source at that position."
+            )
         frames, low, high = [], None, None
         ready = status == "ready"
+        display_mask = common if general else usable
         if ready:
             displayed, low, high = shared_display(
-                [frame.image for frame in aligned], usable, request.stretch
+                [frame.image for frame in aligned], display_mask, request.stretch
             )
             frames = [
                 SequenceFrame(epoch_index=i, pixels=pixels)
@@ -163,11 +231,17 @@ def prepare_sequence(request: SequenceRequest, store: FitsStore) -> SequenceResp
         return SequenceResponse(
             status=status,
             message=message,
+            comparison_kind=request.comparison_kind,
+            display_mask=display_mask.ravel().tolist(),
             epochs=epochs,
             frames=frames,
+            frame_quality=frame_quality,
+            target_pixel=SequenceTargetPixel(x=x, y=y),
+            requested_position_usable=bool(common[iy, ix]),
             width=width,
             height=height,
-            blink_ready=ready,
+            blink_ready=ready and matched_ready,
+            visual_playback_ready=ready,
             target_wavelength_match=target_match,
             baseline_days=baseline,
             coverage_pixel_count=coverage_count,

@@ -61,7 +61,11 @@ def matches(request: Request, payload: MatchRequest):
 def sequence(request: Request, payload: SequenceRequest):
     try:
         validate_observations(
-            payload.access_urls, payload.ra, payload.dec, payload.size_deg
+            payload.access_urls,
+            payload.ra,
+            payload.dec,
+            payload.size_deg,
+            allow_mixed_detectors=payload.comparison_kind == "general",
         )
     except ValueError as error:
         raise HTTPException(400, str(error)) from error

@@ -22,7 +22,7 @@ MAX_REFERENCE_AXIS = 256
 MAX_INPUT_AXIS = 512
 
 
-def validate_observations(urls, ra, dec, size_deg):
+def validate_observations(urls, ra, dec, size_deg, *, allow_mixed_detectors=False):
     if not 2 <= len(urls) <= 4:
         raise ValueError("Choose two to four observations")
     identities = []
@@ -32,7 +32,7 @@ def validate_observations(urls, ra, dec, size_deg):
         identities.append((match[1], "D" + match[2], match[3]))
     if len({identity[:2] for identity in identities}) != len(identities):
         raise ValueError("Choose different exposures, not reprocessed versions")
-    if len({identity[1] for identity in identities}) != 1:
+    if not allow_mixed_detectors and len({identity[1] for identity in identities}) != 1:
         raise ValueError("Choose observations from the same detector")
     return identities
 

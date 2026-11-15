@@ -44,6 +44,18 @@ test('empty spectrum does not create zero flux or model channels', async () => {
   stub([{ spectral_points: [], message: 'No usable data' }]);
   await expect(fetchTargetSpectrum('Target', 1, 2)).rejects.toThrow('No usable data');
 });
+test('saved spectrum retrieval is bounded and forwards cancellation and coordinates', async () => {
+  const calls = stub([{ spectral_points: [{ detector: 'D3', wavelength_um: 2, bandwidth_um: .04, resolving_power: 50, flux_mjy_sr: 1, flux_error_mjy_sr: .2 }], status: 'partial' }]);
+  const controller = new AbortController();
+  await fetchTargetSpectrum('Saved target', 12.123456789, -4.5, controller.signal, 6);
+  const params = new URL(calls[0].url, 'http://test').searchParams;
+  expect(params.get('limit')).toBe('6');
+  expect(params.get('ra')).toBe('12.123456789');
+  expect(params.get('dec')).toBe('-4.5');
+  expect(calls[0].init?.signal).toBe(controller.signal);
+  await expect(fetchTargetSpectrum('Saved target', 1, 2, undefined, 7)).rejects.toThrow('1 and 6');
+  expect(calls).toHaveLength(1);
+});
 const epoch = (n: number) => ({ obs_id: `obs${n}`, detector: 'D3', access_url: `https://archive/${n}`, utc_date: `2025-01-0${n}T00:00:00Z`, mjd_start: 60000 + n, target_wavelength_um: 2, target_bandwidth_um: .04 });
 const matches = { status: 'matches', message: 'Checked', candidate_count: 4, checked_count: 2, failed_count: 1, pending_count: 1, metadata_truncated: false, metadata_rejected_count: 0, pairs_truncated: false, search_complete: false, can_continue: true,
   checks: [1, 2].map(n => ({ artifact_id: `a${n}`, status: 'verified', epoch: epoch(n) })),
@@ -73,6 +85,14 @@ test('registered sequences send URLs and preserve epoch identity and missing-pix
 test('incompatible epochs cannot render as a prepared sequence', async () => {
   stub([{ status: 'incompatible_wavelength', message: 'Wavelength mismatch', frames: [] }]);
   await expect(compareSequence({ epochs: selected, ra_deg: 1, dec_deg: 2, size_px: 200, stretch: 'zscale' })).rejects.toThrow('Wavelength mismatch');
+});
+test('general comparison retains real image pixels when wavelength matching fails', async () => {
+  const calls = stub([{ status: 'ready', comparison_kind: 'general', blink_ready: false, epochs: selected, frames: [0, 1].map(epoch_index => ({ epoch_index, pixels: [.5, null] })), valid_mask: [false, false], display_mask: [true, false], coverage_mask: [true, false], target_wavelength_match: false, matched_fraction: 0 }]);
+  const result = await compareSequence({ epochs: selected, ra_deg: 1, dec_deg: 2, size_px: 200, stretch: 'zscale', comparison_kind: 'general' });
+  expect(JSON.parse(calls[0].init!.body as string).comparison_kind).toBe('general');
+  expect(result.frames[0].pixels).toEqual([.5, 0]);
+  expect(result.blink_ready).toBe(false);
+  expect(result.display_mask).toEqual([true, false]);
 });
 test('catalog uses the exact image SIP header and invents no photometry', async () => {
   const calls = stub([{ status: 'success', sources: [{ id: 's', ra_deg: 1, dec_deg: 2 }] }, { pixels: [[3, 4]], image_match_verified: false }]);

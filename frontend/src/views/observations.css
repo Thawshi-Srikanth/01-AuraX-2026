@@ -59,7 +59,6 @@
 .images-step-controls button:nth-child(2) { width:34px; height:34px; border-radius:50%; }
 .images-step-controls button span { display:none; }
 .images-step-controls button:hover:not(:disabled) { background:theme('colors.bg.raised'); }
-.images-frame-count { font-size:10px; color:theme('colors.text.secondary'); font-variant-numeric:tabular-nums; }
 .images-current-detector, .images-row-detector { display:inline-flex; align-items:center; gap:6px; font-size:11px; }
 .images-current-detector i, .images-row-detector i, .images-detector-key i { display:inline-block; width:5px; height:5px; flex-shrink:0; border-radius:50%; }
 .images-timeline { flex:1; min-width:0; }
@@ -84,8 +83,7 @@
 .images-detector-key { display:flex; flex-wrap:wrap; gap:10px; color:theme('colors.text.secondary'); font-size:9px; }
 .images-detector-key > span { display:inline-flex; align-items:center; gap:4px; }
 .images-timeline-empty { font-size:11px; color:theme('colors.text.secondary'); padding:12px 0; }
-.images-playback > p { flex-shrink:0; max-width:160px; color:theme('colors.text.secondary'); font-size:10px; line-height:1.7; }
-@media (max-width:1100px) { .images-selection, .images-information { width:240px; } .images-playback { gap:18px; } .images-playback > p { max-width:125px; } }
+@media (max-width:1100px) { .images-selection, .images-information { width:240px; } .images-playback { gap:18px; } }
 @media (max-width:699px) {
   .images-heading { padding:8px 16px; }
   .images-heading > div { flex-direction:column; gap:5px; }
@@ -97,7 +95,6 @@
   .images-selection { order:1; width:100%; min-height:400px; height:450px; flex:none; border-right:0; border-top:1px solid theme('colors.border.subtle'); }
   .images-information { order:2; width:100%; min-height:400px; flex:none; border-top:1px solid theme('colors.border.subtle'); border-left:0; }
   .images-playback { flex-wrap:wrap; gap:12px; padding:10px 16px; }
-  .images-playback > p { max-width:none; width:100%; font-size:9px; }
   .images-timeline-caption > span { display:none; }
   .images-detector-key { gap:7px; }
   .images-timeline-dates span:nth-child(even) { display:none; }

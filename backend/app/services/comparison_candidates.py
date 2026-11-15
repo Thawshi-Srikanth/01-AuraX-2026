@@ -1,6 +1,7 @@
 """One bounded IRSA metadata set with optional detector and UTC date filters."""
 
-from datetime import UTC, datetime, timedelta
+from collections import deque
+from datetime import UTC, date, datetime, timedelta
 
 import pyvo
 import requests
@@ -11,9 +12,9 @@ from app.schemas.comparison_matches import MatchRequest
 from app.schemas.observation import SPHERExObservation
 from app.services.observations import (
     IRSA_TAP_URL,
-    ArchiveUnavailable,
     InvalidArchiveResponse,
     parse_observation,
+    query_sia,
 )
 
 REQUIRED_COLUMNS = {
@@ -41,9 +42,21 @@ class CandidateBatch(BaseModel):
     rejected_count: int
     duplicate_exposure_count: int
     retrieved_at: datetime
+    provenance: str = "NASA/IPAC IRSA TAP: spherex.plane and spherex.artifact"
+    source_url: str = IRSA_TAP_URL
+    fallback_notice: str | None = None
+    candidate_scope: str = (
+        "Bounded archive-selected products in the requested detector/date scope"
+    )
 
 
 def query_candidates(request: MatchRequest):
+    if request.time_sampling == "spread":
+        return query_spread_candidates(request)
+    return query_window(request)
+
+
+def query_window(request: MatchRequest, *, sia_only=False):
     bound = request.candidate_limit + 1
     clauses = [
         f"1 = CONTAINS(POINT('ICRS', {request.ra!r}, {request.dec!r}), p.poly)",
@@ -64,15 +77,27 @@ def query_candidates(request: MatchRequest):
         p.energy_bounds_lower, p.energy_bounds_upper, a.uri, a.artifactid
         FROM spherex.artifact a JOIN spherex.plane p ON a.planeid = p.planeid
         WHERE {" AND ".join(clauses)}"""
-    try:
-        with MatchingSession() as session:
-            results = pyvo.dal.TAPService(IRSA_TAP_URL, session=session).search(
-                query, maxrec=bound
-            )
-            table = results.to_table()
-            overflow = results.query_status == "OVERFLOW"
-    except (pyvo.dal.DALAccessError, requests.RequestException, OSError) as error:
-        raise ArchiveUnavailable from error
+    fallback = sia_only
+    if not fallback:
+        try:
+            with MatchingSession() as session:
+                results = pyvo.dal.TAPService(IRSA_TAP_URL, session=session).search(
+                    query, maxrec=bound
+                )
+                table = results.to_table()
+                overflow = results.query_status == "OVERFLOW"
+        except (pyvo.dal.DALAccessError, requests.RequestException, OSError):
+            fallback = True
+    if fallback:
+        table = query_sia(
+            request.ra,
+            request.dec,
+            request.candidate_limit,
+            detector=request.detector,
+            start=start if request.from_date else None,
+            end=end if request.to_date else None,
+        )
+        overflow = bool(table.meta.get("overflow", False))
     if table is None or not REQUIRED_COLUMNS.issubset(table.colnames):
         raise InvalidArchiveResponse
     observations, identities, rejected, duplicates = [], set(), 0, 0
@@ -98,4 +123,86 @@ def query_candidates(request: MatchRequest):
         rejected_count=rejected,
         duplicate_exposure_count=duplicates,
         retrieved_at=datetime.now(UTC),
+        **{
+            key: table.meta[key]
+            for key in ("source_url", "provenance", "fallback_notice")
+            if key in table.meta
+        },
+    )
+
+
+def query_spread_candidates(request: MatchRequest):
+    """Two bounded date windows, interleaved before any FITS downloads."""
+    start = request.from_date or date(2025, 5, 1)
+    end = request.to_date or max(start, datetime.now(UTC).date())
+    if (end - start).days < 2:
+        return query_window(request.model_copy(update={"time_sampling": "archive"}))
+    middle = start + (end - start) // 2
+    windows = [(start, middle), (middle + timedelta(days=1), end)]
+    batches = []
+    for index, (lower, upper) in enumerate(windows):
+        limit = max(
+            2,
+            request.candidate_limit // 2
+            + (request.candidate_limit % 2 if index else 0),
+        )
+        scoped = request.model_copy(
+            update={
+                "time_sampling": "archive",
+                "from_date": lower,
+                "to_date": upper,
+                "candidate_limit": limit,
+            }
+        )
+        # An outage in the first window need not be paid for a second time.
+        batches.append(
+            query_window(scoped, sia_only=bool(batches and batches[0].fallback_notice))
+        )
+    detectors = sorted(
+        {product.detector for batch in batches for product in batch.observations}
+    )
+    queues = [
+        {
+            detector: deque(
+                product
+                for product in batch.observations
+                if product.detector == detector
+            )
+            for detector in detectors
+        }
+        for batch in batches
+    ]
+    products, seen, duplicates = [], set(), 0
+    while any(queue for window in queues for queue in window.values()):
+        for detector in detectors:
+            for window in queues:
+                if not window[detector]:
+                    continue
+                product = window[detector].popleft()
+                identity = (product.obs_id, product.detector)
+                if identity in seen:
+                    duplicates += 1
+                else:
+                    seen.add(identity)
+                    products.append(product)
+    notice = next(
+        (batch.fallback_notice for batch in batches if batch.fallback_notice), None
+    )
+    return CandidateBatch(
+        observations=products[: request.candidate_limit],
+        metadata_rows=sum(batch.metadata_rows for batch in batches),
+        truncated=any(batch.truncated for batch in batches)
+        or len(products) > request.candidate_limit,
+        rejected_count=sum(batch.rejected_count for batch in batches),
+        duplicate_exposure_count=duplicates
+        + sum(batch.duplicate_exposure_count for batch in batches),
+        retrieved_at=min(batch.retrieved_at for batch in batches),
+        provenance="; ".join(dict.fromkeys(batch.provenance for batch in batches)),
+        source_url=batches[-1].source_url,
+        fallback_notice=notice,
+        candidate_scope=(
+            f"Two bounded date windows from {start} to {end}; "
+            "earlier/later candidates interleaved by detector. "
+            "Not a complete archive scan or guaranteed extreme dates."
+        ),
     )

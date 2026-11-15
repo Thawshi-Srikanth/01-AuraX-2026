@@ -1,0 +1,402 @@
+{
+  "checked_at": "2026-11-15T04:48:29.248343+00:00",
+  "method": "Cached native FITS only; catalog proper motion propagated to each observation. No distance, radial velocity, parallax or perspective correction. Usable pixels do not establish a source detection. These are the original four-image selections.",
+  "results": [
+    {
+      "target": "Barnard's Star",
+      "checks": [
+        {
+          "obs_id": "2026W11_1A_0430_2",
+          "detector": "D1",
+          "utc_date": "2026-03-11T02:11:37.212Z",
+          "cached": true,
+          "predicted_ra": 269.4462256109595,
+          "predicted_dec": 4.7687489087123796,
+          "predicted_x": 24.32124064321955,
+          "predicted_y": 26.02538669436868,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206022,
+          "flag_names": [
+            "OVERFLOW",
+            "SUR_ERROR",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9668,
+          "predicted_pixel_mjy_sr": null
+        },
+        {
+          "obs_id": "2026W39_1A_0371_1",
+          "detector": "D2",
+          "utc_date": "2026-09-22T15:04:20.981Z",
+          "cached": true,
+          "predicted_ra": 269.4461059864945,
+          "predicted_dec": 4.770289879538043,
+          "predicted_x": 37.8401547012409,
+          "predicted_y": 36.311337850038676,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206022,
+          "flag_names": [
+            "OVERFLOW",
+            "SUR_ERROR",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9453533479507505,
+          "predicted_pixel_mjy_sr": null
+        },
+        {
+          "obs_id": "2025W33_2C_0321_1",
+          "detector": "D3",
+          "utc_date": "2025-08-15T20:45:11.338Z",
+          "cached": true,
+          "predicted_ra": 269.446352386544,
+          "predicted_dec": 4.767115811481067,
+          "predicted_x": 38.04558811786813,
+          "predicted_y": 37.4080074560049,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206022,
+          "flag_names": [
+            "OVERFLOW",
+            "SUR_ERROR",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9699780738741778,
+          "predicted_pixel_mjy_sr": null
+        },
+        {
+          "obs_id": "2026W33_2A_0594_4",
+          "detector": "D3",
+          "utc_date": "2026-08-16T15:08:22.122Z",
+          "cached": true,
+          "predicted_ra": 269.4461286205121,
+          "predicted_dec": 4.769998314620836,
+          "predicted_x": 38.19209106237271,
+          "predicted_y": 35.93845921868456,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206022,
+          "flag_names": [
+            "OVERFLOW",
+            "SUR_ERROR",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9770618991398212,
+          "predicted_pixel_mjy_sr": null
+        }
+      ]
+    },
+    {
+      "target": "Epsilon Indi B",
+      "checks": [
+        {
+          "obs_id": "2025W18_2B_0011_2",
+          "detector": "D3",
+          "utc_date": "2025-05-01T13:55:43.194Z",
+          "cached": true,
+          "predicted_ra": 331.09531634906915,
+          "predicted_dec": -56.80019118981376,
+          "predicted_x": 24.760314634732907,
+          "predicted_y": 25.075687606886195,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9856,
+          "predicted_pixel_mjy_sr": 22.956878662109375
+        },
+        {
+          "obs_id": "2026W39_1A_0276_2",
+          "detector": "D3",
+          "utc_date": "2026-09-22T05:28:53.617Z",
+          "cached": true,
+          "predicted_ra": 331.09813086101275,
+          "predicted_dec": -56.801144261052215,
+          "predicted_x": 38.78161078891243,
+          "predicted_y": 39.10065124354897,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9550580997949419,
+          "predicted_pixel_mjy_sr": 10.163874626159668
+        },
+        {
+          "obs_id": "2025W18_2B_0011_2",
+          "detector": "D6",
+          "utc_date": "2025-05-01T13:55:43.194Z",
+          "cached": true,
+          "predicted_ra": 331.09531634906915,
+          "predicted_dec": -56.80019118981376,
+          "predicted_x": 38.16901682158018,
+          "predicted_y": 38.039571525546656,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9745319615449486,
+          "predicted_pixel_mjy_sr": 12.71402359008789
+        },
+        {
+          "obs_id": "2026W39_1A_0276_2",
+          "detector": "D6",
+          "utc_date": "2026-09-22T05:28:53.617Z",
+          "cached": true,
+          "predicted_ra": 331.09813086101275,
+          "predicted_dec": -56.801144261052215,
+          "predicted_x": 38.347602016096864,
+          "predicted_y": 39.15588737714353,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9524948735475052,
+          "predicted_pixel_mjy_sr": 7.14369535446167
+        }
+      ]
+    },
+    {
+      "target": "RW Aurigae",
+      "checks": [
+        {
+          "obs_id": "2025W36_1A_0095_1",
+          "detector": "D1",
+          "utc_date": "2025-09-01T10:04:17.466Z",
+          "cached": true,
+          "predicted_ra": 76.95658580040956,
+          "predicted_dec": 30.401293225869587,
+          "predicted_x": 24.238737804160728,
+          "predicted_y": 24.517177378332665,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9432,
+          "predicted_pixel_mjy_sr": 48.267765045166016
+        },
+        {
+          "obs_id": "2026W08_2A_0233_1",
+          "detector": "D3",
+          "utc_date": "2026-02-20T17:16:14.818Z",
+          "cached": true,
+          "predicted_ra": 76.95658689883322,
+          "predicted_dec": 30.40129056189587,
+          "predicted_x": 37.95875730259094,
+          "predicted_y": 37.73939967353006,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206018,
+          "flag_names": [
+            "OVERFLOW",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9800978242536684,
+          "predicted_pixel_mjy_sr": 348.39727783203125
+        },
+        {
+          "obs_id": "2025W36_1A_0095_1",
+          "detector": "D4",
+          "utc_date": "2025-09-01T10:04:17.467Z",
+          "cached": true,
+          "predicted_ra": 76.95658580040956,
+          "predicted_dec": 30.401293225869587,
+          "predicted_x": 38.46493893006437,
+          "predicted_y": 37.28747871681406,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206021,
+          "flag_names": [
+            "TRANSIENT",
+            "SUR_ERROR",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9774436090225563,
+          "predicted_pixel_mjy_sr": 445.891845703125
+        },
+        {
+          "obs_id": "2026W08_2A_0233_1",
+          "detector": "D6",
+          "utc_date": "2026-02-20T17:16:14.818Z",
+          "cached": true,
+          "predicted_ra": 76.95658689883322,
+          "predicted_dec": 30.40129056189587,
+          "predicted_x": 37.8410846566886,
+          "predicted_y": 37.63542948441666,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 2097154,
+          "flag_names": [
+            "OVERFLOW",
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9807724742789677,
+          "predicted_pixel_mjy_sr": 729.4957275390625
+        }
+      ]
+    },
+    {
+      "target": "R Draconis",
+      "checks": [
+        {
+          "obs_id": "2026W30_1B_0199_3",
+          "detector": "D1",
+          "utc_date": "2026-07-21T01:56:49.342Z",
+          "cached": true,
+          "predicted_ra": 248.16722507327628,
+          "predicted_dec": 66.75502476653331,
+          "predicted_x": 24.359232013049947,
+          "predicted_y": 24.631404981769318,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206022,
+          "flag_names": [
+            "OVERFLOW",
+            "SUR_ERROR",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9756,
+          "predicted_pixel_mjy_sr": null
+        },
+        {
+          "obs_id": "2025W18_2B_0015_1",
+          "detector": "D3",
+          "utc_date": "2025-05-01T14:32:44.178Z",
+          "cached": true,
+          "predicted_ra": 248.1672427938397,
+          "predicted_dec": 66.75502268335546,
+          "predicted_x": 37.845027315449414,
+          "predicted_y": 37.89056494198871,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206022,
+          "flag_names": [
+            "OVERFLOW",
+            "SUR_ERROR",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9561477483555406,
+          "predicted_pixel_mjy_sr": null
+        },
+        {
+          "obs_id": "2026W30_1B_0199_3",
+          "detector": "D4",
+          "utc_date": "2026-07-21T01:56:49.343Z",
+          "cached": true,
+          "predicted_ra": 248.16722507327628,
+          "predicted_dec": 66.75502476653331,
+          "predicted_x": 38.19454782074101,
+          "predicted_y": 38.49506156729361,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206150,
+          "flag_names": [
+            "OVERFLOW",
+            "SUR_ERROR",
+            "DICHROIC",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.17608365660313713,
+          "predicted_pixel_mjy_sr": null
+        },
+        {
+          "obs_id": "2025W18_2B_0015_1",
+          "detector": "D6",
+          "utc_date": "2025-05-01T14:32:44.178Z",
+          "cached": true,
+          "predicted_ra": 248.1672427938397,
+          "predicted_dec": 66.75502268335546,
+          "predicted_x": 38.146813303297684,
+          "predicted_y": 38.418364843810764,
+          "predicted_pixel_usable": false,
+          "predicted_flags": 69206022,
+          "flag_names": [
+            "OVERFLOW",
+            "SUR_ERROR",
+            "SOURCE",
+            "BLOOM"
+          ],
+          "usable_field_fraction": 0.9605329735199865,
+          "predicted_pixel_mjy_sr": null
+        }
+      ]
+    },
+    {
+      "target": "WISE 0855",
+      "checks": [
+        {
+          "obs_id": "2025W19_1B_0116_1",
+          "detector": "D3",
+          "utc_date": "2025-05-05T16:48:02.459Z",
+          "cached": true,
+          "predicted_ra": 133.76126180618658,
+          "predicted_dec": -7.242305401228752,
+          "predicted_x": 24.81830902787874,
+          "predicted_y": 24.306802750519676,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9716,
+          "predicted_pixel_mjy_sr": 0.17423854768276215
+        },
+        {
+          "obs_id": "2026W17_1B_0227_2",
+          "detector": "D3",
+          "utc_date": "2026-04-21T04:45:01.429Z",
+          "cached": true,
+          "predicted_ra": 133.7590789751126,
+          "predicted_dec": -7.24212567421874,
+          "predicted_x": 37.39772049569346,
+          "predicted_y": 37.80836490471445,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9702062643239114,
+          "predicted_pixel_mjy_sr": 0.5518811941146851
+        },
+        {
+          "obs_id": "2025W19_1B_0116_1",
+          "detector": "D6",
+          "utc_date": "2025-05-05T16:48:02.459Z",
+          "cached": true,
+          "predicted_ra": 133.76126180618658,
+          "predicted_dec": -7.242305401228752,
+          "predicted_x": 38.29724693636122,
+          "predicted_y": 37.934519903232584,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9657615112160567,
+          "predicted_pixel_mjy_sr": 0.8224672675132751
+        },
+        {
+          "obs_id": "2026W17_1B_0227_2",
+          "detector": "D6",
+          "utc_date": "2026-04-21T04:45:01.429Z",
+          "cached": true,
+          "predicted_ra": 133.7590789751126,
+          "predicted_dec": -7.24212567421874,
+          "predicted_x": 36.84467761560803,
+          "predicted_y": 37.963966245543936,
+          "predicted_pixel_usable": true,
+          "predicted_flags": 2097152,
+          "flag_names": [
+            "SOURCE"
+          ],
+          "usable_field_fraction": 0.9723393489627256,
+          "predicted_pixel_mjy_sr": 0.44141897559165955
+        }
+      ]
+    }
+  ]
+}

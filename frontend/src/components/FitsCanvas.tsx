@@ -942,14 +942,15 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
                 <select
                   aria-label="Field of View Cutout Resolution"
                   value={
-                    Math.min(290, cutoutSize ?? 200)
+                    Math.min(290, cutoutSize ?? 50)
                   }
                   onChange={(e) => onCutoutSizeChange(Number(e.target.value))}
                   className="bg-[#12151C] border border-[#1C2029] hover:border-[#2E3646] rounded px-1.5 py-0.5 text-[11px] font-mono text-white focus:outline-none cursor-pointer"
                 >
-                  <option value={200}>20.7 arcmin (nominal 200px)</option>
-                  <option value={100}>10.3 arcmin (nominal 100px)</option>
+                  <option value={16}>1.7 arcmin (target detail, nominal 16px)</option>
                   <option value={50}>5.2 arcmin (nominal 50px)</option>
+                  <option value={100}>10.3 arcmin (nominal 100px)</option>
+                  <option value={200}>20.7 arcmin (nominal 200px)</option>
                   <option value={290}>30 arcmin (maximum)</option>
                 </select>
               </div>
@@ -1264,14 +1265,6 @@ export const FitsCanvas: React.FC<FitsCanvasProps> = ({
           <div className="text-[9px] text-text-tertiary mt-0.5">
             SURFACE: {cutout.min_flux_mjy_sr} – {cutout.max_flux_mjy_sr} {cutout.bunit || 'MJy/sr'} • 6.2"/px
           </div>
-        </div>
-      )}
-
-      {/* Non-intrusive timeline buffering indicator during playback */}
-      {!minimal && loading && isPlaying && (
-        <div className="absolute top-4 left-4 z-30 bg-bg-surface/90 border border-border-subtle rounded px-2.5 py-1 text-[11px] text-text-secondary flex items-center space-x-2 backdrop-blur shadow select-none">
-          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping inline-block" />
-          <span>Buffering next frame...</span>
         </div>
       )}
 

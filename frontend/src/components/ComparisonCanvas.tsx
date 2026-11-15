@@ -11,7 +11,7 @@ function bitmap(data: SequenceResponse, frame: number, masked: boolean, invert =
   const context = canvas.getContext('2d')!;
   const image = context.createImageData(data.width, data.height);
   const values = data.frames[frame].pixels;
-  const mask = masked ? data.valid_mask : data.coverage_mask;
+  const mask = masked ? data.valid_mask : data.display_mask || data.coverage_mask;
   for (let i = 0; i < values.length; i++) {
     const adjusted = Math.max(0, Math.min(1, (values[i] - .5) * contrast + .5));
     const value = Math.round((invert ? 1 - adjusted : adjusted) * 255);
@@ -53,6 +53,15 @@ export function ComparisonCanvas({ data, frame, masked, invert, contrast, transf
       ctx.fillStyle = '#050507'; ctx.fillRect(0, 0, width, height);
       ctx.imageSmoothingEnabled = scale < 1;
       ctx.drawImage(image, cx - data.width * scale / 2, cy - data.height * scale / 2, data.width * scale, data.height * scale);
+      if (data.target_pixel) {
+        const x = cx + (data.target_pixel.x + .5 - data.width / 2) * scale;
+        const y = cy + (data.target_pixel.y + .5 - data.height / 2) * scale;
+        ctx.strokeStyle = '#67E8F9'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x - 12, y); ctx.lineTo(x - 5, y); ctx.moveTo(x + 5, y); ctx.lineTo(x + 12, y);
+        ctx.moveTo(x, y - 12); ctx.lineTo(x, y - 5); ctx.moveTo(x, y + 5); ctx.lineTo(x, y + 12);
+        ctx.stroke();
+      }
       if (point) {
         const x = cx + (point.x + .5 - data.width / 2) * scale;
         const y = cy + (point.y + .5 - data.height / 2) * scale;

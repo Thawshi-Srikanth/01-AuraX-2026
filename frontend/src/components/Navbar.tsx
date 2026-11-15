@@ -16,7 +16,7 @@ const PRIMARY: { id: NavigationTab; label: string; description: string }[] = [
   { id: 'Home', label: 'Home', description: 'Choose a starting position' },
   { id: 'Explore', label: 'Sky map', description: 'Find your way around the sky' },
   { id: 'Observations', label: 'Images', description: 'View observations and play through dates' },
-  { id: 'Compare', label: 'Compare dates', description: 'Inspect two observations together' },
+  { id: 'Compare', label: 'Compare images', description: 'Inspect images across wavelengths and observations' },
 ];
 const SECONDARY: typeof PRIMARY = [
   { id: 'Collections', label: 'Saved targets', description: 'Return to your collections' },

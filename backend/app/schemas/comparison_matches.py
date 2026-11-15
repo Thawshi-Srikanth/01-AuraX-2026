@@ -16,6 +16,8 @@ class MatchRequest(BaseModel):
     from_date: date | None = None
     to_date: date | None = None
     candidate_limit: int = Field(default=24, ge=2, le=64)
+    min_baseline_days: float = Field(default=0, ge=0, le=7300)
+    time_sampling: Literal["archive", "spread"] = "archive"
     advance: bool = False
     retry_failed: bool = False
 
@@ -82,6 +84,9 @@ class MatchResponse(BaseModel):
     metadata_rejected_count: int
     duplicate_exposure_count: int
     metadata_retrieved_at: datetime
+    metadata_provenance: str = "NASA/IPAC IRSA TAP: spherex.plane and spherex.artifact"
+    metadata_source_url: str = "https://irsa.ipac.caltech.edu/TAP"
+    min_baseline_days: float = 0
     checked_count: int
     verified_count: int
     excluded_count: int

@@ -3,7 +3,33 @@
 AURAx is an astronomical exploration application for SPHEREx infrared observations.
 This repository is being built progressively, starting with the backend.
 
+## Challenge scope
+
+The current scope is a public tool where users enter RA/Dec, load real SPHEREx
+images of one fixed sky field, and play, pause and step through observations to
+inspect changes over time. Validation covers Barnard's Star, Epsilon Indi B,
+WISE 0855, RW Aurigae and R Draconis.
+
+Prioritize useful image selection, quality coverage, comparable wavelengths,
+clear timestamps and provenance, accessible controls, and reliable small,
+sequential cutout requests. Report missing data and archive failures explicitly.
+Successful loading alone does not confirm a source, motion or variability.
+
+ePSF and HiPS-cube features are out of scope by user decision. Existing saved
+spectral samples remain available, but new optional integrations are not part of
+the current work. R Draconis field coverage improved from 1.4% to 77.8% by replacing
+one poor frame. The remaining validation priority is identifiable targets and
+reference stars in useful time sequences, with masked source pixels disclosed. See the
+[challenge audit](docs/challenge-audit-2026-11-15.md) for evidence and limits.
+
 ## Available now
+
+Home offers a checked Epsilon Indi B time comparison: two real D3 observations
+508.6 days apart with closely matching local passbands. It opens a metadata-only
+selection; pressing Analyse downloads small cutouts and reruns strict matched-blink
+checks. A six-reference exploratory check supports the apparent displacement as
+consistent with known catalog motion. This is not precision astrometry or a new
+discovery. [Validation, image figure and animation](docs/epsilon-indi-example-validation-2026-11-15.md).
 
 - A minimal FastAPI backend with a health endpoint.
 - Real SIMBAD name resolution and manual ICRS coordinate validation.
@@ -133,11 +159,76 @@ catalog coordinates do not imply separately resolved sources. The inspector does
 not infer an emission spectrum or source type from a single exposure. Selecting a
 target loads images without automatically opening wavelength analysis.
 
+Compare images opens in general comparison mode: choose two to four real
+observations across detectors, wavelengths, and observation times. The images
+are registered to one sky grid and shown with a shared display scale over their
+common quality-screened area. Different wavelengths or simultaneous observations
+do not block the grid. Each frame retains its measured target wavelength and
+date; wavelength differences alone do not establish variability or motion.
+General comparison still requires calibrated FITS data and at least 16 common
+usable pixels. Sequence playback is exploratory and retains a warning when
+passbands differ. Matching-wavelength blink keeps its strict wavelength and time checks.
+Four distinct images spread across the retrieved list are suggested when available. Visible date, detector,
+release, text-search, and sort controls filter the retrieved list while retaining
+selected images. The selection tray lets you remove hidden selections, and
+Select four chooses from the filtered list. Load more images expands metadata
+retrieval in bounded steps up to 500 products. Press the persistent Analyse images
+action at the top to download and align selected frames; checkbox and filter
+changes cancel old preparation without starting new image downloads.
+Images and Compare now start with a nominal 50-pixel, approximately 5.2-arcminute
+field centred on the target. Larger angular fields remain selectable; native
+calibrated pixel values and actual returned dimensions remain authoritative.
+Archive FITS downloads are serialized by the cache writer, and a comparison
+retrieves selected cutouts sequentially. Detector filters in both views use a
+checkbox dropdown supporting any subset of D1 through D6.
+
+Compare fits the available screen height, with an image grid and timeline between
+independently scrolling side panels. The right panel has Controls, Quality and
+Details tabs for playback, frame interval, image tools, coverage and provenance.
+Prepared comparisons show the shared usable sky fraction and per-image coverage
+checks in Quality. A cyan cross marks the requested coordinates, not an identified
+source. Masked positions and original FITS flag names are disclosed. Low-coverage
+messages identify the affected frames, including when preparation is blocked.
+Choose replacement for an image frees that selection slot and opens observations;
+choose a new image and press Analyse images to retrieve it. Replacement does not
+automatically trigger another download or weaken any quality masks.
+
+General comparison preserves request frame order even when exact FITS timestamps
+differ slightly from archive metadata and reverse two nominally simultaneous
+detectors. Each actual timestamp must still agree with its selected metadata
+within one second. The angular field selection is not an exact pixel-dimension
+promise: real FITS edge pixels are accepted within the backend's bounded grid.
+
+The optional matching-wavelength mode searches for observations over time.
+It defaults to a minimum 30-day gap, with adjustable gaps from any distinct time
+to 180 days. Metadata is sampled from two bounded date windows and interleaved
+by detector before calibration downloads. This is not an exhaustive archive scan
+and does not guarantee the oldest or newest exposure.
+Pending checks continue through bounded batches even when metadata is truncated
+or the search status is partial; failures remain visible and stop automatic work.
 Comparison searches poll resumable background jobs and
 cancel outstanding jobs when leaving the search. Candidate groups require every
 pair to be verified; only a ready registered sequence can blink. Difference images
 and motion measurements remain unavailable. Fresh saved collections start empty;
 existing browser-saved targets are preserved.
+
+The five challenge examples share catalog reference positions and proper motions.
+Their cutouts use one fixed approximate J2025.5 field centre, propagated from
+SIMBAD J2000 coordinates without parallax or perspective corrections. Frames are
+never independently recentered on the predicted star. Home also offers the original
+supplied WISE 0855 coordinates explicitly. Arbitrary entered coordinates and saved
+targets remain unchanged. Reference links and epoch labels distinguish these
+field centres from measured source detections.
+
+Saved targets include a Spectrum panel with an explicit Load spectrum action.
+Choose a bounded limit of 2, 4, or 6 observations; calibrated cutouts are retrieved
+sequentially. The panel plots only returned nearest-pixel surface-brightness
+measurements, with variance-derived uncertainty and channel bandwidths, and lists
+their dates and original FITS links. Partial coverage and excluded observations
+remain visible. These samples include backgrounds and can span different dates;
+they are not a complete or PSF-extracted source spectrum. Exports use the loaded
+result. Switching saved targets cancels the previous request, and editing notes
+does not re-query the archive.
 
 Verify from `frontend/`:
 
@@ -223,6 +314,22 @@ coordinates and limit. Empty and partial responses are not cached. Responses
 include retrieval time, source, and cache status. Network requests have a 5-second
 connect timeout and 30-second read-inactivity timeout, not a total deadline.
 No image downloads or background jobs run when searching.
+
+If an IRSA TAP query fails, observation and comparison-candidate searches
+automatically try IRSA's official SIA2 service at
+`https://irsa.ipac.caltech.edu/SIA`. TAP remains the first choice for each fresh
+search. The fallback searches the DR1 and QR3 wide and deep Level 2 image
+collections, using exact-position coverage and the same validated FITS download
+and calibration pipeline. It never substitutes generated observations or images.
+Responses identify SIA as their source and retain that provenance when cached.
+SIA retries a transient HTTP 502, 503, or 504 once, with bounded network timeouts.
+
+SIA results are a bounded archive-selected subset, sorted locally by observation
+time; they are not guaranteed to be the oldest matching archive products.
+Comparison date intervals are sent to SIA, with start-time and detector checks
+applied locally. Limits and overflow remain visible even if those checks remove
+rows. Newly ingested data can lag TAP by about a day. Failure of both services
+returns 503; unusable SIA metadata returns 502, rather than claiming no coverage.
 
 ## Retrieve an image
 
@@ -416,9 +523,11 @@ proper-motion estimate, or discovery claim is produced. Compatible-date discover
 Use `POST /api/compare/sequence` in <http://127.0.0.1:8000/docs>.
 Supply `access_urls` containing **two to four distinct real product URLs**,
 `ra`, `dec`, optional `size_deg` (default 0.03, maximum 0.25), and `stretch`
-(`zscale`, `linear`, or `log`). Every selected product must use the same detector.
-Reprocessed versions of one exposure and duplicate actual observation times are
-rejected. Different timestamps on the same calendar day are allowed.
+(`zscale`, `linear`, or `log`). The default `comparison_kind="matched"` requires
+one detector, unique exposure identities, distinct actual times, and the wavelength
+checks below. Different timestamps on the same calendar day are allowed.
+`comparison_kind="general"` permits different detectors, passbands and simultaneous
+observations while retaining product-identity and calibration checks.
 
 The first selected observation defines the reference grid. Frames retain request
 order, even when that order is not chronological. Each later observation is
@@ -440,13 +549,18 @@ same 0.002 um pair margin; they are not precision science calibration.
 
 Ready responses contain exactly the requested number of frames. Each frame has
 an `epoch_index` into the returned `epochs` list. Pixel arrays use the first
-image's row-major grid, zero-based coordinates, full WCS header, and one common
-`valid_mask`, with nulls for excluded pixels in every frame. One contrast range
+image's row-major grid, zero-based coordinates, and full WCS header. Matched mode
+uses the common `valid_mask`; general mode uses `display_mask` while retaining
+`valid_mask` as stricter diagnostics. Excluded display pixels are null in every
+frame. One contrast range
 is computed from all retained pixels across all selected images, preserving
 relative brightness. No missing dates or pixels are synthesized.
 
-The target and at least 16 common pixels must pass all pair checks before frames
-are emitted. Blocked responses include epoch metadata and diagnostics but an
+In matched mode, the target and at least 16 common pixels must pass all pair checks
+before frames are emitted. General mode instead requires 16 common quality-screened
+pixels and uses `display_mask` for exploratory playback. `visual_playback_ready`
+reports playback availability; `blink_ready` separately certifies the stricter
+time, detector, target and wavelength checks. Blocked responses include epoch metadata and diagnostics but an
 empty `frames` list. Their status identifies duplicate times, incompatible
 wavelengths, missing common quality coverage, or insufficient matched coverage.
 Invalid input is HTTP 400/422; unusable identity/calibration is 502 and retrieval

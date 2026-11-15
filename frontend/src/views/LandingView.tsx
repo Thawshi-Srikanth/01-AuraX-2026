@@ -3,6 +3,8 @@ import { ArrowRight, ChevronDown, Play, Search } from 'lucide-react';
 import { NavigationTab } from '../tokens/colors';
 import { ResolvedTarget, resolveTarget } from '../services/api';
 import { HOME_VIDEO } from '../content/homeMedia';
+import { CHALLENGE_TARGETS, challengeTarget } from '../data/challengeTargets';
+import { CHECKED_COMPARISON_URL } from '../data/checkedComparison';
 import './landing.css';
 
 interface LandingViewProps {
@@ -11,22 +13,15 @@ interface LandingViewProps {
   activeTarget: ResolvedTarget;
 }
 
-// Starting positions from the existing benchmark catalog; WISE 0855 uses the challenge coordinates.
-const EXAMPLES = [
-  { name: "Barnard's Star", ra: 269.45208, dec: 4.69339 },
-  { name: 'Epsilon Indi B', ra: 330.84042, dec: -56.78611 },
-  { name: 'WISE 0855', ra: (8 + 55 / 60 + 10.831 / 3600) * 15, dec: -(7 + 14 / 60 + 42.53 / 3600) },
-  { name: 'RW Aurigae', ra: 76.9535, dec: 30.40139 },
-  { name: 'R Draconis', ra: 247.55425, dec: 66.7045 },
-];
+const EXAMPLES = CHALLENGE_TARGETS;
 const HOME_FAQ = [
   { question: 'Do I need to know astronomy to start?', answer: 'No. Choose one of the five sample targets to fill its coordinates, then select Load image sequence. Start by browsing the dates and reading the details for one image.' },
   { question: 'Which coordinate format should I enter?', answer: 'Use decimal degrees in the ICRS frame. RA must be at least 0 and less than 360; Dec must be between −90 and +90. The samples already use the right format.' },
   { question: 'What do the detector colors mean?', answer: 'The six colors identify SPHEREx detectors and their wavelength ranges. They help you follow which detector made an observation; they are not the natural colors of the objects. The image display has its own colormap.' },
   { question: 'Why are some dates or images missing?', answer: 'Available observations depend on sky coverage, the archive release, your filters, and usable data. This app does not guarantee a complete observation history. Try a broader date range or another detector; an empty result does not mean the object is absent.' },
-  { question: 'Why can’t I press Play for every image pair?', answer: 'Images supports manual timeline browsing. In Compare dates, choose two observations and run Align and check images. Blinking requires usable sky overlap and locally matching wavelengths; unsuitable pixels are hidden. Some pairs remain available only side by side.' },
+  { question: 'Why can’t I press Play for every image pair?', answer: 'Images supports manual timeline browsing. In Compare images, choose observations and press Analyse images. Blinking requires usable sky overlap and locally matching wavelengths; unsuitable pixels are hidden. Some pairs remain available only side by side.' },
   { question: 'Does a moving point mean I found a new object?', answer: 'A mark records a suspected change, not a confirmed discovery or motion measurement. Noise, brightness changes, and image artifacts can mislead. Review both dates and independent catalogs before drawing a conclusion.' },
-  { question: 'Is everything shown a measured observation?', answer: 'The sky-image tools request public SPHEREx observations and report failures instead of substituting sample images. The landing cover is a published SPHEREx infrared image; the video poster is a labelled schematic. The spectrum view still uses modeled values and should not be treated as a measured spectrum.' },
+  { question: 'Is everything shown a measured observation?', answer: 'The sky-image tools request public SPHEREx observations and report failures instead of substituting sample images. The landing cover is a published SPHEREx infrared image; the video poster is a labelled schematic. Saved targets can load real nearest-pixel spectral samples with uncertainties. These include background light and are not a complete source spectrum.' },
 ];
 
 const DECIMAL_NUMBER = /^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?$/i;
@@ -88,12 +83,8 @@ export function LandingView({ onNavigate, onTargetResolved, activeTarget }: Land
   }
 
   function fillExample(example: typeof EXAMPLES[number]) {
-    fillPosition(startingPosition(
-      Number(example.ra.toFixed(8)),
-      Number(example.dec.toFixed(8)),
-      example.name,
-      'Challenge example starting position',
-    ));
+    fillPosition(challengeTarget(example));
+    setPositionNotice('Fixed sky field centred near ' + example.name + ' at J2025.5 using approximate catalog proper motion. Images retain one sky grid so motion stays visible.');
   }
 
   async function submitName(event: FormEvent) {
@@ -187,13 +178,15 @@ export function LandingView({ onNavigate, onTargetResolved, activeTarget }: Land
               <div className="landing-examples">
                 <p>Try a challenge target to fill the coordinates.</p>
                 <div className="landing-example-list" aria-label="Example sky positions">
-                  {EXAMPLES.map(example => <button type="button" key={example.name} disabled={searching} aria-pressed={positionTarget?.provenance === 'Challenge example starting position' && positionTarget.canonical_name === example.name} onClick={() => fillExample(example)}>{example.name}</button>)}
+                  {EXAMPLES.map(example => <button type="button" key={example.name} disabled={searching} aria-pressed={positionTarget?.provenance.startsWith('Challenge benchmark:') && positionTarget.canonical_name === example.name} onClick={() => fillExample(example)}>{example.name}</button>)}
+                  <button type="button" disabled={searching} onClick={() => { const position = CHALLENGE_TARGETS[2].challengePosition; fillPosition(startingPosition(position.ra, position.dec, 'WISE 0855 · supplied coordinates', 'Challenge-supplied coordinates; epoch unspecified, not propagated.')); }}>WISE 0855 · supplied coordinates</button>
                 </div>
               </div>
               <p className="landing-position-notice" role="status">{positionNotice}</p>
+              {positionTarget?.benchmark && <p className="landing-field-hint">Fixed field at J2025.5 from an approximate proper-motion estimate. Parallax and perspective effects are not included. <a href={positionTarget.benchmark.source_url} target="_blank" rel="noreferrer">Catalog reference ↗</a> Your own RA/Dec inputs are used unchanged.</p>}
               <button type="submit" className="landing-primary landing-load-sequence" disabled={searching}>Load image sequence <ArrowRight size={16} aria-hidden="true" /></button>
             </form>
-
+            <a className="landing-text-action landing-checked-example" href={CHECKED_COMPARISON_URL}>Try a checked Epsilon Indi B time comparison <ArrowRight size={14} aria-hidden="true" /></a>
 
           </div>
 
@@ -231,7 +224,7 @@ export function LandingView({ onNavigate, onTargetResolved, activeTarget }: Land
 
         <section className="landing-history landing-section" aria-labelledby="history-title">
           <div><p className="landing-eyebrow">An old idea. A new view.</p><h2 id="history-title">Discoveries can begin<br />with a second look.</h2><p className="landing-body">In 1930, Clyde Tombaugh found Pluto by comparing photographs taken on different nights. A blink comparator switched between the plates, helping him spot a faint point that had moved against the stars.</p><a className="landing-source-link" href="https://www.aps.org/apsnews/2009/03/tombaugh-discovery-pluto-1930" target="_blank" rel="noreferrer">Read the discovery story ↗</a></div>
-          <div className="landing-look-for"><h3>What might change?</h3><dl><div><dt>Position</dt><dd>Asteroids, comets, and nearby stars can shift against more distant objects.</dd></div><div><dt>Brightness</dt><dd>Variable stars can brighten or fade between observations.</dd></div><div><dt>The image itself</dt><dd>Noise, artifacts, and different wavelengths can imitate a change. A visual candidate needs further checks.</dd></div></dl><p className="landing-body">AURAx uses checked, aligned image pairs for blinking. Mark a possible change, then inspect the same area in both dates.</p></div>
+          <div className="landing-look-for"><h3>What might change?</h3><dl><div><dt>Position</dt><dd>Asteroids, comets, and nearby stars can shift against more distant objects.</dd></div><div><dt>Brightness</dt><dd>Variable stars can brighten or fade between observations.</dd></div><div><dt>The image itself</dt><dd>Noise, artifacts, and different wavelengths can imitate a change. A visual candidate needs further checks.</dd></div></dl><p className="landing-body">AURAx aligns selected images on one sky grid. Mark a possible change, then inspect the same area across observations and check their wavelengths.</p></div>
         </section>
 
         <section className="landing-workflow" aria-labelledby="workflow-title">
@@ -241,7 +234,7 @@ export function LandingView({ onNavigate, onTargetResolved, activeTarget }: Land
           </div>
           <ol>
             <li><span className="landing-step-number" aria-hidden="true">1</span><div><h3>Choose a patch of sky</h3><p>Enter RA and Dec, or use an example. Load the observations available for that position.</p></div></li>
-            <li><span className="landing-step-number" aria-hidden="true">2</span><div><h3>Compare observation dates</h3><p>Browse the Images timeline. In Compare dates, align and check two images, then press Play when blinking is available.</p></div></li>
+            <li><span className="landing-step-number" aria-hidden="true">2</span><div><h3>Compare observation dates</h3><p>Browse the Images timeline. In Compare images, align two to four images, then press Play. Use matching wavelengths over time for stricter comparisons.</p></div></li>
             <li><span className="landing-step-number" aria-hidden="true">3</span><div><h3>Pause on a change</h3><p>Mark a point that seems to move. Inspect the same area in both dates before drawing a conclusion.</p></div></li>
           </ol>
         </section>

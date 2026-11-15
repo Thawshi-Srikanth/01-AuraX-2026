@@ -32,7 +32,7 @@ If an archive request fails, retry when the service is available. An empty cover
 - **Sky map:** find a region and orient yourself on the sky.
 - **Images:** inspect individual calibrated images and their metadata.
 - **Region inspector:** click an image region to inspect its signal, background, quality and nearby catalog records.
-- **Compare dates:** automatically find wavelength-compatible dates, then blink through two to four observations or inspect them in a linked grid.
+- **Compare images:** inspect two to four observations across wavelengths and detectors in a linked grid, or search for matching wavelengths over time for checked blink playback.
 - **Saved targets:** return to saved selections through the navigation menu.
 
 A detector name is not a complete wavelength description. SPHEREx uses filters whose passbands vary across each detector. The wavelength at the target position matters.

@@ -5,6 +5,17 @@ const location = (url: string) => new URL(url, 'https://example.test');
 const key = targetIdentity(DEFAULT_TARGET);
 
 describe('navigation preserves scientific context', () => {
+  test('general comparison preserves simultaneous detectors in shared links', () => {
+    let session = setPreference(emptySession(), key, 'compare', 'comparisonKind', 'general');
+    session = setPreference(session, key, 'compare', 'selection', { key, a: JSON.stringify(['shared', 'D1']), b: JSON.stringify(['shared', 'D2']) });
+    session = setPreference(session, key, 'compare', 'manualDates', true);
+    const restored = readRoute(location(routeUrl('Compare', session)), emptySession()).session;
+    expect(preference(restored, key, 'compare', 'comparisonKind', '')).toBe('general');
+    const frames = preference(restored, key, 'compare', 'selection', { key, a: '', b: '' });
+    expect(matchesObservation({ obs_id: 'shared', detector: 'D1' }, frames.a)).toBe(true);
+    expect(matchesObservation({ obs_id: 'shared', detector: 'D2' }, frames.a)).toBe(false);
+    expect(matchesObservation({ obs_id: 'shared', detector: 'D2' }, frames.b)).toBe(true);
+  });
   test('public page paths are independent of target query parameters', () => {
     const session = setPreference(emptySession(), key, 'images', 'selection', { key, id: 'image-A' });
     expect(routeUrl('Home', session)).toBe('/');

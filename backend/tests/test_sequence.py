@@ -87,6 +87,10 @@ def test_four_rotated_frames_share_full_sip_grid_mask_and_display_scale(
     assert all(pair["target_wavelength_match"] for pair in data["pair_checks"])
     assert data["matched_pixel_count"] >= 16
     assert data["baseline_days"] == pytest.approx(90)
+    assert data["requested_position_usable"] is True
+    assert data["target_pixel"] == pytest.approx({"x": 7.25, "y": 7.25})
+    assert len(data["frame_quality"]) == 4
+    assert all(check["requested_position_usable"] for check in data["frame_quality"])
     assert data["reference_epoch_index"] == 0
     assert len(calls) == 3
     assert all(
@@ -118,6 +122,33 @@ def test_four_rotated_frames_share_full_sip_grid_mask_and_display_scale(
     assert all(size > sizes[0] for size in sizes[1:])
 
 
+def test_low_coverage_frame_and_masked_position_are_explained_without_relaxing_masks(
+    client, sequence_files
+):
+    for i, url in enumerate(URLS):
+        with fits.open(sequence_files[url], mode="update", memmap=False) as hdus:
+            h = hdus["IMAGE"].header
+            h["PC1_1"], h["PC2_2"] = 1.0, 1.0
+            h["PC1_2"], h["PC2_1"] = 0.0, 0.0
+            if i == 2:
+                hdus["FLAGS"].header["MSKN0007"] = "DICHROIC"
+                hdus["FLAGS"].data[:, :12] = 1 << 7
+    data = post(client, comparison_kind="general")
+    assert data["status"] == "ready" and data["visual_playback_ready"]
+    assert data["blink_ready"] is False
+    assert 16 <= data["coverage_pixel_count"] < 128
+    assert data["requested_position_usable"] is False
+    bad = data["frame_quality"][2]
+    assert bad["usable_fraction"] < 0.5
+    assert bad["native_target_flags"] == 1 << 7
+    assert bad["native_target_flag_names"] == ["DICHROIC"]
+    assert "replace low-coverage frames" in data["message"]
+    assert "requested sky position is masked" in data["message"]
+    for check in data["frame_quality"]:
+        assert check["usable_fraction"] == check["usable_pixel_count"] / 256
+    assert post(client)["status"] == "insufficient_coverage"
+
+
 @pytest.mark.parametrize("count", [2, 3])
 def test_two_or_three_observations_are_not_padded_to_four(client, count):
     data = post(client, access_urls=URLS[:count])
@@ -125,6 +156,21 @@ def test_two_or_three_observations_are_not_padded_to_four(client, count):
     assert len(data["frames"]) == len(data["epochs"]) == count
     assert len(data["pair_checks"]) == count * (count - 1) // 2
     assert client.app.state.fits_store.fetch.call_count == count
+
+
+def test_signed_unknown_flag_remains_excluded_without_breaking_diagnostics(
+    client, sequence_files
+):
+    with fits.open(sequence_files[URLS[0]], mode="update", memmap=False) as hdus:
+        hdus["FLAGS"].data = hdus["FLAGS"].data.astype(np.int32)
+        hdus["FLAGS"].data[7, 7] = -(1 << 31)
+    data = post(client, comparison_kind="general")
+    assert data["status"] == "ready"
+    assert data["blink_ready"] is False
+    assert data["requested_position_usable"] is False
+    assert data["frame_quality"][0]["native_target_flags"] == 1 << 31
+    assert data["frame_quality"][0]["native_target_flag_names"] == ["Bit 31"]
+    assert data["coverage_mask"][7 * 16 + 7] is False
 
 
 def test_reference_and_frame_order_follow_request_not_time_sort(client):
@@ -209,6 +255,52 @@ def test_duplicate_actual_times_are_not_accepted_as_new_epochs(client, sequence_
     data = post(client)
     assert data["status"] == "duplicate_time"
     assert data["frames"] == []
+
+
+def test_general_comparison_keeps_different_wavelength_images(client, sequence_files):
+    with fits.open(sequence_files[URLS[1]], mode="update", memmap=False) as hdus:
+        hdus["WCS-WAVE"].data["VALUES"][..., 0] = 2.0
+    data = post(client, access_urls=URLS[:2], comparison_kind="general")
+    assert data["status"] == "ready" and not data["blink_ready"]
+    assert data["visual_playback_ready"] is True
+    assert not data["target_wavelength_match"]
+    assert data["matched_pixel_count"] == 0
+    assert data["display_mask"] == data["coverage_mask"]
+    assert sum(data["display_mask"]) >= 16
+    assert len(data["frames"]) == 2
+    for frame in data["frames"]:
+        for value, visible in zip(frame["pixels"], data["display_mask"]):
+            assert (value is not None and 0 <= value <= 1) if visible else value is None
+
+
+def test_general_comparison_allows_simultaneous_different_detectors(
+    client, sequence_files
+):
+    mixed_url = URLS[1].replace("D1_spx", "D2_spx")
+    sequence_files[mixed_url] = sequence_files[URLS[1]]
+    with fits.open(sequence_files[mixed_url], mode="update", memmap=False) as hdus:
+        hdus["IMAGE"].header["DETECTOR"] = 2
+        hdus["IMAGE"].header["DATE-OBS"] = "2025-01-01T00:00:00"
+        hdus["WCS-WAVE"].data["VALUES"][..., 0] = 2.0
+    data = post(client, access_urls=[URLS[0], mixed_url], comparison_kind="general")
+    assert data["status"] == "ready" and len(data["frames"]) == 2
+    assert data["baseline_days"] == 0 and not data["blink_ready"]
+    assert [epoch["detector"] for epoch in data["epochs"]] == ["D1", "D2"]
+    strict = client.post(
+        "/api/compare/sequence",
+        json={
+            **PAYLOAD,
+            "access_urls": [URLS[0], mixed_url],
+        },
+    )
+    assert strict.status_code == 400
+
+
+def test_general_comparison_still_rejects_unusable_images(client, sequence_files):
+    with fits.open(sequence_files[URLS[1]], mode="update", memmap=False) as hdus:
+        hdus["FLAGS"].data[:] = 1
+    data = post(client, access_urls=URLS[:2], comparison_kind="general")
+    assert data["status"] == "no_usable_overlap" and not data["frames"]
 
 
 def test_same_calendar_day_with_different_times_is_valid(client, sequence_files):

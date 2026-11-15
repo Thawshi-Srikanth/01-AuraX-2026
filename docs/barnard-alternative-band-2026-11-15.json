@@ -1,0 +1,57 @@
+{
+  "purpose": "Two bounded D6 checks at approximate proper-motion positions; not source identification.",
+  "results": [
+    {
+      "product": {
+        "artifact_id": "01a0d96c-ca6d-7b40-8535-933e762c376d",
+        "obs_id": "2025W33_2C_0321_1",
+        "detector": "D6",
+        "band_name": "SPHEREx-D6",
+        "release": "dr1",
+        "processing_version": "l2b-v27-2026-228",
+        "mjd_start": 60902.864715,
+        "utc_date": "2025-08-15T20:45:11.376Z",
+        "date_only": "2025-08-15",
+        "wavelength_min_um": 4.4115,
+        "wavelength_max_um": 5.009600000000001,
+        "wavelength_center_um": null,
+        "exptime_sec": 113.5826,
+        "access_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2025W33_2C/l2b-v27-2026-228/6/level2_2025W33_2C_0321_1D6_spx_l2b-v27-2026-228.fits"
+      },
+      "source_request_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2025W33_2C/l2b-v27-2026-228/6/level2_2025W33_2C_0321_1D6_spx_l2b-v27-2026-228.fits?center=269.4463796045393%2C4.766765193798327d&size=0.08611111111111111",
+      "predicted_pixel_usable": false,
+      "flag_names": [
+        "OVERFLOW",
+        "SOURCE",
+        "BLOOM"
+      ],
+      "usable_field_fraction": 0.9664
+    },
+    {
+      "product": {
+        "artifact_id": "01a0dab8-8f7b-7111-9066-c51c64c2a98d",
+        "obs_id": "2025W35_1A_0484_2",
+        "detector": "D6",
+        "band_name": "SPHEREx-D6",
+        "release": "dr1",
+        "processing_version": "l2b-v27-2026-230",
+        "mjd_start": 60914.484085,
+        "utc_date": "2025-08-27T11:37:04.944Z",
+        "date_only": "2025-08-27",
+        "wavelength_min_um": 4.4115,
+        "wavelength_max_um": 5.009600000000001,
+        "wavelength_center_um": null,
+        "exptime_sec": 113.5826,
+        "access_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2025W35_1A/l2b-v27-2026-230/6/level2_2025W35_1A_0484_2D6_spx_l2b-v27-2026-230.fits"
+      },
+      "source_request_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2025W35_1A/l2b-v27-2026-230/6/level2_2025W35_1A_0484_2D6_spx_l2b-v27-2026-230.fits?center=269.4463796045393%2C4.766765193798327d&size=0.08611111111111111",
+      "predicted_pixel_usable": false,
+      "flag_names": [
+        "OVERFLOW",
+        "SOURCE",
+        "BLOOM"
+      ],
+      "usable_field_fraction": 0.9792
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { NavigationTab, DETECTOR_COLORS } from '../tokens/colors';
+import { SavedSpectrum } from '../components/SavedSpectrum';
 import {
   ResolvedTarget,
   SpectrumResponse,
@@ -50,7 +51,9 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
   });
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [typeFilter, setTypeFilter] = useState<string>('ALL');
-  const [spectrumResult, setSpectrumResult] = useState<{ key: string; data?: SpectrumResponse; error?: string } | null>(null);
+  const [spectrumResult, setSpectrumResult] = useState<{ key: string; data?: SpectrumResponse; error?: string; loading?: boolean } | null>(null);
+  const [sampleLimit, setSampleLimit] = useState(2);
+  const [spectrumRequest, setSpectrumRequest] = useState({ key: '', limit: 2, revision: 0 });
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -82,32 +85,32 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
 
   const spectrum = spectrumResult?.key === activeItem?.id ? spectrumResult?.data ?? null : null;
   const spectrumError = spectrumResult?.key === activeItem?.id ? spectrumResult?.error : null;
+  const spectrumLoading = spectrumResult?.key === activeItem?.id && !!spectrumResult?.loading;
+  const activeId = activeItem?.id;
+  const targetName = activeItem?.target.canonical_name || activeItem?.target.query;
+  const targetRa = activeItem?.target.coordinates.ra_deg;
+  const targetDec = activeItem?.target.coordinates.dec_deg;
 
   // A result is only displayed or exported for the saved target it belongs to.
   useEffect(() => {
-    if (!activeItem) {
-      setSpectrumResult(null);
-      return;
-    }
-    let cancelled = false;
-    const key = activeItem.id;
-    setSpectrumResult(null);
+    if (!activeId || !targetName || spectrumRequest.key !== activeId) return;
+    const controller = new AbortController();
+    const key = activeId;
+    setSpectrumResult({ key, loading: true });
     fetchTargetSpectrum(
-      activeItem.target.canonical_name || activeItem.target.query,
-      activeItem.target.coordinates.ra_deg,
-      activeItem.target.coordinates.dec_deg
+      targetName, targetRa, targetDec, controller.signal, spectrumRequest.limit,
     )
       .then((res) => {
-        if (!cancelled) setSpectrumResult({ key, data: res });
+        if (!controller.signal.aborted) setSpectrumResult({ key, data: res });
       })
       .catch((error) => {
-        if (!cancelled) setSpectrumResult({ key, error: error instanceof Error ? error.message : 'Measured samples unavailable.' });
+        if (!controller.signal.aborted) setSpectrumResult({ key, error: error instanceof Error ? error.message : 'Measured samples unavailable.' });
       });
 
     return () => {
-      cancelled = true;
+      controller.abort();
     };
-  }, [activeItem]);
+  }, [activeId, targetName, targetRa, targetDec, spectrumRequest]);
 
   const isCurrentBookmarked = useMemo(
     () => isTargetSaved(currentTarget),
@@ -270,7 +273,7 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                     onClick={() => handleOpenInTab(activeItem, 'Compare')}
                     className="px-3 py-1.5 text-[#888E9B] hover:text-white hover:bg-[#12151C] transition-colors cursor-pointer flex items-center space-x-1"
                   >
-                    <span>Compare dates</span>
+                    <span>Compare images</span>
                     <ArrowUpRight size={11} />
                   </button>
                 </div>
@@ -362,10 +365,18 @@ export const CollectionsView: React.FC<CollectionsViewProps> = ({
                   {spectrum ? `${spectrum.peak_flux_mjy_sr.toFixed(2)} MJy/sr` : '—'}
                 </div>
                 <div className="text-[10px] font-mono text-[#888E9B] tabular-nums">
-                  {spectrum ? `${spectrum.total_channels} measured samples · mean ${spectrum.mean_flux_mjy_sr.toFixed(2)} MJy/sr` : spectrumError || 'Loading measured samples…'}
+                  {spectrum ? `${spectrum.total_channels} measured samples · mean ${spectrum.mean_flux_mjy_sr.toFixed(2)} MJy/sr` : spectrumError || (spectrumLoading ? 'Loading measured samples…' : 'Load spectral samples below')}
                 </div>
               </div>
             </div>
+
+            <section className="px-8 py-6 border-b border-[#1C2029]" aria-label="Saved target spectrum">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4"><div><h2 className="text-sm font-medium">Spectrum · measured samples</h2><p className="text-xs text-[#888E9B] mt-1">Real Level 2 measurements at the saved coordinates.</p></div><div className="flex flex-wrap items-center gap-2"><label className="text-xs text-[#888E9B]">Observation limit <select aria-label="Spectrum observation limit" className="ml-2 bg-[#0B0D11] border border-[#1C2029] rounded px-2 py-1.5 text-white" value={sampleLimit} disabled={spectrumLoading} onChange={event => setSampleLimit(Number(event.target.value))}>{[2, 4, 6].map(value => <option key={value} value={value}>{value}</option>)}</select></label><button type="button" className="bg-white text-black rounded px-3 py-2 text-xs disabled:opacity-40" disabled={spectrumLoading} onClick={() => setSpectrumRequest(previous => ({ key: activeItem.id, limit: sampleLimit, revision: previous.revision + 1 }))}>{spectrumLoading ? 'Loading samples…' : spectrum ? 'Refresh spectrum' : 'Load spectrum'}</button></div></div>
+              {spectrumLoading && <p className="text-xs text-[#888E9B]" role="status">Loading small calibrated cutouts one at a time. Only usable measured pixels will appear.</p>}
+              {spectrumError && <p className="text-xs text-amber-300" role="alert">{spectrumError}</p>}
+              {spectrum && <SavedSpectrum spectrum={spectrum} />}
+              {!spectrum && !spectrumLoading && !spectrumError && <p className="text-xs text-[#888E9B]">Press Load spectrum to query up to {sampleLimit} observations. Saving a target stores its coordinates and notes; measurements are retrieved from the archive when requested.</p>}
+            </section>
 
             {/* 4. Flush Apple-Notes Style Notes Area (Auto-Saves) */}
             <div className="px-8 py-6 flex-1 flex flex-col">

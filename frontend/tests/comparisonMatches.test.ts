@@ -11,6 +11,10 @@ function response(count = 4): MatchResponse {
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(yes => { resolve = yes; }); return { promise, resolve }; }
 
 describe('compatible-date discovery', () => {
+  test('minimum gap and temporal sampling are part of the search identity', () => {
+    expect(matchKey({ ...request, min_baseline_days: 30, time_sampling: 'spread' })).not.toBe(matchKey({ ...request, min_baseline_days: 0, time_sampling: 'spread' }));
+    expect(matchKey({ ...request, time_sampling: 'spread' })).not.toBe(matchKey(request));
+  });
   test('uses local calibration instead of broad archive band midpoint', () => {
     const data = validateMatches(response());
     expect(data.groups[0].observations[0].wavelength_center_um).toBe(1.37);
@@ -72,8 +76,17 @@ describe('compatible-date discovery', () => {
   });
   test('archive interruptions retain partial matches and stop automatic work', async () => {
     let calls = 0; let state: MatchState | null = null;
-    const loader = createMatchLoader(async () => { calls++; return { ...response(2), status:'partial' }; });
+    const loader = createMatchLoader(async () => { calls++; return { ...response(2), status:'partial', failed:1, pending:9, auto_continue:false }; });
     await loader.select(request, value => { state = value; });
     expect(calls).toBe(1); expect(state?.data?.groups).toHaveLength(1); expect(state?.searching).toBe(false);
+  });
+  test('pending checks continue even when metadata is truncated and status is partial', async () => {
+    let calls = 0;
+    const loader = createMatchLoader(async () => {
+      calls++;
+      return { ...response(calls === 1 ? 2 : 4), status: 'partial', limited: true };
+    });
+    await loader.select(request, () => {});
+    expect(calls).toBe(2);
   });
 });

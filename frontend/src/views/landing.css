@@ -211,3 +211,5 @@
 @media (max-width: 599px) {
   .landing-coordinate-fields { grid-template-columns: 1fr; }
 }
+
+.landing-checked-example { display:inline-flex; gap:8px; align-items:center; margin-top:16px; font-size:12px; }

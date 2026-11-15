@@ -29,6 +29,26 @@ class FitsContentError(FitsDownloadError):
     """Archive bytes failed scientific file/target validation."""
 
 
+@contextmanager
+def cutout_response(request_url):
+    """Retry one transient proxy response, never a partial image stream."""
+    for attempt in range(2):
+        with requests.get(
+            request_url, stream=True, timeout=(5, 30), allow_redirects=False
+        ) as response:
+            if attempt == 0 and response.status_code in (502, 503, 504):
+                try:
+                    delay = float(response.headers.get("Retry-After", "1"))
+                    delay = min(5.0, max(0.0, delay)) if math.isfinite(delay) else 1.0
+                except (TypeError, ValueError):
+                    delay = 1.0
+            else:
+                yield response
+                return
+        # Close the unsuccessful response before waiting or opening another.
+        time.sleep(delay)
+
+
 @dataclass(frozen=True)
 class RetrievedFits:
     path: Path
@@ -144,9 +164,7 @@ class FitsStore:
         path = self.directory / f"{key}.fits"
         temporary = None
         try:
-            with requests.get(
-                request_url, stream=True, timeout=(5, 30), allow_redirects=False
-            ) as response:
+            with cutout_response(request_url) as response:
                 if response.status_code != 200:
                     raise FitsDownloadError(
                         "IRSA did not return a complete FITS response"

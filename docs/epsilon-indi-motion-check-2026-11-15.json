@@ -1,0 +1,237 @@
+{
+  "checked_at": "2026-11-15T05:43:56.411850+00:00",
+  "target": "Epsilon Indi B",
+  "status": "exploratory_centroid_check",
+  "baseline_days": 508.64356053240743,
+  "epochs": [
+    {
+      "obs_id": "2025W18_2B_0011_4",
+      "detector": "D3",
+      "utc_date": "2025-05-01T14:00:01.056Z",
+      "mjd_start": 60796.583345555555,
+      "access_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2025W18_2B/l2b-v27-2026-197/3/level2_2025W18_2B_0011_4D3_spx_l2b-v27-2026-197.fits",
+      "source_request_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/dr1/level2/2025W18_2B/l2b-v27-2026-197/3/level2_2025W18_2B_0011_4D3_spx_l2b-v27-2026-197.fits?center=331.0956582664693%2C-56.80030697842581d&size=0.08611111111111111",
+      "processing_version": "l2b-v27-2026-197",
+      "cached_fits": false,
+      "target_wavelength_um": 1.7241442831278535,
+      "target_bandwidth_um": 0.04144708063606418
+    },
+    {
+      "obs_id": "2026W39_1A_0276_1",
+      "detector": "D3",
+      "utc_date": "2026-09-22T05:26:44.686Z",
+      "mjd_start": 61305.22690608796,
+      "access_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr3/level2/2026W39_1A/l2b-v27-2026-268/3/level2_2026W39_1A_0276_1D3_spx_l2b-v27-2026-268.fits",
+      "source_request_url": "https://irsa.ipac.caltech.edu/ibe/data/spherex/qr3/level2/2026W39_1A/l2b-v27-2026-268/3/level2_2026W39_1A_0276_1D3_spx_l2b-v27-2026-268.fits?center=331.0956582664693%2C-56.80030697842581d&size=0.13177950120434986",
+      "processing_version": "l2b-v27-2026-268",
+      "cached_fits": false,
+      "target_wavelength_um": 1.7218207248971367,
+      "target_bandwidth_um": 0.0416169062755282
+    }
+  ],
+  "matched_pixels": 2344,
+  "field_pixels": 2500,
+  "fixed_aperture_anchor": [
+    24,
+    25
+  ],
+  "target_centroids": [
+    [
+      24.056567041922776,
+      24.735703364187973
+    ],
+    [
+      23.61093623381484,
+      23.795592752132766
+    ]
+  ],
+  "expected_pixels": [
+    [
+      24.104603667649243,
+      24.749736622027477
+    ],
+    [
+      23.513609406436828,
+      23.89539531321949
+    ]
+  ],
+  "target_prediction_separations_arcsec": [
+    0.3119824507486487,
+    0.8438743042038321
+  ],
+  "offset_axes": [
+    "east",
+    "north"
+  ],
+  "catalog_expected_offset_arcsec": [
+    5.5478254856261495,
+    -3.4311402790280217
+  ],
+  "target_raw_offset_arcsec": [
+    4.934538884497921,
+    -4.251462294442924
+  ],
+  "reference_translation_arcsec": [
+    -0.14869069751386146,
+    0.08989722399904528
+  ],
+  "target_reference_corrected_offset_arcsec": [
+    5.083229582011782,
+    -4.34135951844197
+  ],
+  "reference_rms_arcsec": 0.5863496475437711,
+  "reference_peaks": [
+    {
+      "anchor": [
+        8,
+        34
+      ],
+      "centroids": [
+        [
+          8.069900344358285,
+          34.315016597543156
+        ],
+        [
+          8.101243800310302,
+          34.32298376426918
+        ]
+      ],
+      "offset_arcsec": [
+        -0.1993877591795037,
+        -0.028192224685806525
+      ]
+    },
+    {
+      "anchor": [
+        39,
+        31
+      ],
+      "centroids": [
+        [
+          39.08176091552571,
+          31.32128703491491
+        ],
+        [
+          39.07249554053181,
+          31.42767711602205
+        ]
+      ],
+      "offset_arcsec": [
+        -0.2167251766035692,
+        0.6200713985744725
+      ]
+    },
+    {
+      "anchor": [
+        34,
+        29
+      ],
+      "centroids": [
+        [
+          34.166465987326,
+          28.80785715029472
+        ],
+        [
+          34.16359363792927,
+          28.803911029411164
+        ]
+      ],
+      "offset_arcsec": [
+        0.026435819247858552,
+        -0.015532081913064658
+      ]
+    },
+    {
+      "anchor": [
+        12,
+        9
+      ],
+      "centroids": [
+        [
+          12.037363835345635,
+          8.781058020176692
+        ],
+        [
+          12.078516357558513,
+          8.788219929269978
+        ]
+      ],
+      "offset_arcsec": [
+        -0.2533625112339587,
+        -0.0556292226473678
+      ]
+    },
+    {
+      "anchor": [
+        28,
+        16
+      ],
+      "centroids": [
+        [
+          28.223260653683795,
+          15.549316769467609
+        ],
+        [
+          28.086907403526617,
+          15.527692822776705
+        ]
+      ],
+      "offset_arcsec": [
+        0.8344387451346456,
+        0.1953265299111552
+      ]
+    },
+    {
+      "anchor": [
+        13,
+        28
+      ],
+      "centroids": [
+        [
+          13.118976276793743,
+          28.492885592365177
+        ],
+        [
+          13.071336210643484,
+          28.63861583331697
+        ]
+      ],
+      "offset_arcsec": [
+        -0.09799363584821924,
+        0.9304083762606145
+      ]
+    }
+  ],
+  "rejected_reference_peaks": [],
+  "aperture_sensitivity": [
+    {
+      "radius_pixels": 2,
+      "offset_arcsec": [
+        3.692540637324483,
+        -3.264404112768406
+      ]
+    },
+    {
+      "radius_pixels": 3,
+      "offset_arcsec": [
+        5.083229582011782,
+        -4.34135951844197
+      ]
+    },
+    {
+      "radius_pixels": 4,
+      "offset_arcsec": [
+        5.069894943642488,
+        -4.3652252374634495
+      ]
+    }
+  ],
+  "caveats": [
+    "Exploratory fixed-aperture centroids, not a precision motion measurement.",
+    "Field peaks are reference candidates; their catalog identities are not certified.",
+    "Catalog expectation omits parallax and perspective acceleration.",
+    "No PSF matching, interpolation covariance or propagated centroid errors.",
+    "RMS and aperture sensitivity are diagnostics, not formal significance.",
+    "No newly discovered source or resolved binary is claimed."
+  ]
+}

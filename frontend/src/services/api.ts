@@ -14,6 +14,7 @@ export interface ProperMotion {
 }
 
 export interface ResolvedTarget {
+  benchmark?: { id: string; reference_epoch: number; field_epoch: number; reference_ra: number; reference_dec: number; source_url: string };
   query: string;
   canonical_name: string;
   object_type: string;
@@ -24,6 +25,8 @@ export interface ResolvedTarget {
 }
 
 export interface SPHERExObservation {
+  release?: string;
+  processing_version?: string;
   artifact_id?: string;
   obs_id: string;
   detector: string;
@@ -99,7 +102,7 @@ function normalizeRa(ra: number): number {
   return ra;
 }
 // Nominal SPHEREx sampling is 6.2 arcsec/pixel; the service returns its actual dimensions.
-export const angularSize = (pixels = 200, maximum = .5) => Math.min(maximum, pixels * 6.2 / 3600);
+export const angularSize = (pixels = 50, maximum = .5) => Math.min(maximum, pixels * 6.2 / 3600);
 async function readResponse(response: Response, label: string) {
   const data = await response.json();
   if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : `${label} (${response.status})`);
@@ -123,13 +126,14 @@ export async function resolveCoordinates(ra: number, dec: number): Promise<Resol
 export async function fetchObservations(
   ra: number,
   dec: number,
-  limit: number = 100
+  limit: number = 100,
+  signal?: AbortSignal
 ): Promise<ObservationsResponse> {
   const normRa = normalizeRa(ra);
   const url = `${API_BASE_URL}/api/observations?ra=${normRa}&dec=${dec}&limit=${limit}`;
-  const response = await fetch(url);
+  const response = await fetch(url, { signal });
   if (!response.ok) {
-    throw new Error(`Failed to query SPHEREx TAP archive: ${response.statusText}`);
+    throw new Error(`Failed to query the SPHEREx archive: ${response.statusText}`);
   }
   const data = await response.json();
   if (!Array.isArray(data.observations)) throw new Error('The archive returned an invalid observation list.');
@@ -171,7 +175,7 @@ export interface EpochMetadata {
   obs_id: string;
   utc_date: string;
   detector: string;
-  wavelength_center_um: number;
+  wavelength_center_um: number | null;
   access_url?: string | null;
 }
 
@@ -225,7 +229,7 @@ export interface CompareResponse {
 export async function compareObservations(req: CompareRequest, signal?: AbortSignal): Promise<CompareResponse> {
   if (req.ra_deg === undefined || req.dec_deg === undefined) throw new Error('Target coordinates are required.');
   const sequence = await compareSequence({ epochs: [req.epoch_a, req.epoch_b], ra_deg: req.ra_deg, dec_deg: req.dec_deg,
-    size_px: req.size_px ?? 200, stretch: req.stretch ?? 'zscale' }, signal);
+    size_px: req.size_px ?? 50, stretch: req.stretch ?? 'zscale' }, signal);
   return { ...sequence, epoch_a: sequence.frames[0].epoch, epoch_b: sequence.frames[1].epoch,
     pixels_a: sequence.frames[0].pixels, pixels_b: sequence.frames[1].pixels, pixels_diff: [], metrics: null, wcs: null,
     wavelength_diff_percent: Math.abs(sequence.frames[0].wavelength_um - sequence.frames[1].wavelength_um) / sequence.frames[0].wavelength_um * 100,
@@ -270,10 +274,15 @@ export interface MatchRequest {
   size_px: number;
   advance?: boolean;
   retry_failed?: boolean;
+  min_baseline_days?: number;
+  time_sampling?: 'archive' | 'spread';
 }
 export async function findComparisonMatches(req: MatchRequest, signal?: AbortSignal): Promise<MatchResponse> {
   const body = { ra: normalizeRa(req.ra_deg), dec: req.dec_deg, from_date: req.from_date || undefined,
-    to_date: req.to_date || undefined, candidate_limit: 24, advance: !!req.advance || !!req.retry_failed, retry_failed: !!req.retry_failed };
+    to_date: req.to_date || undefined, candidate_limit: 24, advance: !!req.advance || !!req.retry_failed, retry_failed: !!req.retry_failed,
+    ...(req.min_baseline_days !== undefined ? { min_baseline_days: req.min_baseline_days } : {}),
+    ...(req.time_sampling ? { time_sampling: req.time_sampling } : {}),
+  };
   const started = await readResponse(await fetch(`${API_BASE_URL}/api/compare/matches/jobs`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
   }), 'Matching search unavailable');
@@ -303,16 +312,23 @@ export interface SequenceRequest {
   dec_deg: number;
   size_px: number;
   stretch: string;
+  comparison_kind?: 'general' | 'matched';
 }
 
 export interface SequenceResponse {
   status: 'success' | 'incompatible_wavelength' | 'error';
   message: string;
+  comparison_kind?: 'general' | 'matched';
+  display_mask?: boolean[];
+  frame_quality?: { epoch_index: number; usable_pixel_count: number; usable_fraction: number; requested_position_usable: boolean; native_target_flags: number; native_target_flag_names?: string[] }[];
+  target_pixel?: { x: number; y: number } | null;
+  requested_position_usable?: boolean;
   frames: { epoch: EpochMetadata; pixels: number[]; wavelength_um: number; bandwidth_um: number }[];
   width: number;
   height: number;
   registered: boolean;
   blink_ready: boolean;
+  visual_playback_ready?: boolean;
   wavelength_match: boolean;
   valid_mask: boolean[];
   coverage_mask: boolean[];
@@ -328,10 +344,11 @@ export async function compareSequence(req: SequenceRequest, signal?: AbortSignal
   const response = await fetch(`${API_BASE_URL}/api/compare/sequence`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ access_urls: epochs.map(e => e.access_url), ra: normalizeRa(req.ra_deg), dec: req.dec_deg,
-      size_deg: angularSize(req.size_px, .25), stretch: req.stretch }), signal,
+      size_deg: angularSize(req.size_px, .25), stretch: req.stretch, comparison_kind: req.comparison_kind }), signal,
   });
   const data = await readResponse(response, 'Comparison preparation failed');
-  if (data.status !== 'ready' || !data.blink_ready) throw new Error(data.message || 'These observations cannot be blinked safely.');
+  if (data.status !== 'ready' || (req.comparison_kind !== 'general' && !data.blink_ready)) throw new Error(data.message || 'These observations could not be prepared.');
+  if (req.comparison_kind === 'general' && data.comparison_kind !== 'general') throw new Error('The server did not prepare a general comparison.');
   if (data.frames.length !== epochs.length) throw new Error('Incomplete registered sequence.');
   return { ...data, status: 'success', wavelength_match: data.target_wavelength_match,
     valid_fraction: data.matched_fraction, provenance: 'NASA/IPAC IRSA; full SIP WCS registration',
@@ -339,7 +356,7 @@ export async function compareSequence(req: SequenceRequest, signal?: AbortSignal
       const e: ArchiveEpoch = data.epochs[frame.epoch_index];
       if (frame.epoch_index !== i || e.access_url !== epochs[i].access_url || e.obs_id !== epochs[i].obs_id || e.detector !== epochs[i].detector) throw new Error('Returned image does not match the selected observation.');
       return { epoch: { ...epochs[i], utc_date: e.utc_date }, pixels: frame.pixels.map((p, k) => {
-        if (p === null && data.valid_mask[k]) throw new Error('Missing usable comparison pixel.');
+        if (p === null && (data.display_mask || data.valid_mask)[k]) throw new Error('Missing usable comparison pixel.');
         return p ?? 0; // Display filler is excluded by the explicit valid mask.
       }), wavelength_um: e.target_wavelength_um, bandwidth_um: e.target_bandwidth_um };
     }) };
@@ -381,6 +398,12 @@ export interface DetectorBandInfo {
 }
 
 export interface SpectrumResponse {
+  method?: string;
+  uncertainty?: string;
+  caveats?: string[];
+  metadata_truncated?: boolean;
+  attempted_observations?: number;
+  excluded_observations?: { obs_id: string; detector: string; reason: string; utc_date: string }[];
   message?: string;
   target_name: string;
   ra_deg: number;
@@ -399,9 +422,12 @@ export async function fetchTargetSpectrum(
   targetName: string,
   ra?: number,
   dec?: number,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  limit: number = 2
 ): Promise<SpectrumResponse> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 6) throw new Error('Choose between 1 and 6 observations per spectral request.');
   const params = new URLSearchParams({ target_name: targetName });
+  params.set('limit', String(limit));
   if (ra !== undefined) params.append('ra', normalizeRa(ra).toString());
   if (dec !== undefined) params.append('dec', dec.toString());
 
@@ -525,7 +551,7 @@ export function adaptMatches(data: ArchiveMatches): MatchResponse {
     candidates: data.candidate_count, checked: data.checked_count,
     failed: data.failed_count, pending: data.pending_count, metadata_complete: !data.metadata_truncated && !data.metadata_rejected_count,
     complete: data.search_complete && !limited && !data.failed_count && !data.pending_count,
-    can_continue: data.can_continue || data.failed_count > 0, auto_continue: data.can_continue && data.status !== 'partial', limited,
+    can_continue: data.can_continue || data.failed_count > 0, auto_continue: data.can_continue && data.failed_count === 0, limited,
     provenance: 'NASA/IPAC IRSA; target-position wavelength checks only' };
 }
 
